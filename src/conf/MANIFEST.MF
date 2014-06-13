@@ -5,21 +5,21 @@ Specification-Vendor: Joda.org
 Specification-Version: 2.0
 Implementation-Vendor: Joda.org
 Implementation-Title: org.joda.time
-Implementation-Version: 2.0-2014c
+Implementation-Version: 2.0-2014e
 Implementation-Vendor-Id: org.joda
 Bundle-ManifestVersion: 2
 Bundle-Vendor: Joda.org
 Bundle-Name: Joda-Time
 Bundle-SymbolicName: joda-time
-Bundle-Version: 2.0-2014c
-Export-Package: org.joda.time;version=2.0-2014c,
+Bundle-Version: 2.0-2014e
+Export-Package: org.joda.time;version=2.0-2014e,
  org.joda.time.base;version=2.0,
  org.joda.time.chrono;version=2.0,
  org.joda.time.convert;version=2.0,
  org.joda.time.field;version=2.0,
  org.joda.time.format;version=2.0,
- org.joda.time.tz;version=2.0-2014c
+ org.joda.time.tz;version=2.0-2014e
 Bundle-License: Apache 2.0
 Bundle-DocURL: http://joda-time.sourceforge.net/
-OlsonDatabase-FileName: tzdata2014c.tar.gz
+OlsonDatabase-FileName: tzdata2014e.tar.gz
 OlsonDatabase-FileSize: 221322
