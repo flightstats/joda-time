@@ -18,6 +18,7 @@ Other related projects:
 http://joda-time.sourceforge.net/related.html
 
 Flightstats Build Instructions
+- Make sure you're using JDK 1.7 (at least as of 2014j)
 - download tzdata file (from http://www.iana.org/time-zones, grab the "data" tgz)
 - note exact file size of the tgz
 - edit src/conf/MANIFEST.MF and
