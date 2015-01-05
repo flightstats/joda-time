@@ -265,7 +265,7 @@ public class TestDateTimeZone extends TestCase {
         map.put("BET", "America/Sao_Paulo");
         map.put("ART", "Africa/Cairo");
         map.put("CAT", "Africa/Maputo");
-        map.put("EAT", "Africa/Addis_Ababa");
+        map.put("EAT", "Africa/Nairobi");
         map.put("NET", "Asia/Yerevan");
         map.put("PLT", "Asia/Karachi");
         map.put("IST", "Asia/Kolkata");
