@@ -30,5 +30,6 @@ Flightstats Build Instructions
 - Commit the changes
 - At the root, type "mvn package"
 - You might need to fix a unit test if some bit of data changed (usually a country string/code).
+- upload to our artifactory. Choose the joda-time-2.2-xxx from the target directory, upload to ext-release-local. It figures out the rest of the path for you from the pom.
 
 
