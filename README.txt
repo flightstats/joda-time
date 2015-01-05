@@ -28,5 +28,6 @@ Flightstats Build Instructions
 - untar the tzdata.tar.gz into this directory, overwriting the existing files. Ignore any new files untarred, they can be deleted.
 - Commit the changes
 - At the root, type "mvn package"
+- You might need to fix a unit test if some bit of data changed (usually a country string/code).
 
 
