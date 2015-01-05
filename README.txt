@@ -32,5 +32,5 @@ Flightstats Build Instructions
 - You might need to fix a unit test if some bit of data changed (usually a country string/code).
 - upload to our artifactory. Choose the joda-time-2.2-xxx.jar from the target directory, upload to ext-release-local. It figures out the rest of the path for you from the pom.
   - repeat with the sources and javadoc jars
-
+- Email engineering with the updated version and a summary of which regions were affected and when the change will be important
 
