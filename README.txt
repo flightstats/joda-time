@@ -16,3 +16,17 @@ https://github.com/JodaOrg/joda-time-i18n
 
 Other related projects:
 http://joda-time.sourceforge.net/related.html
+
+Flightstats Build Instructions
+- download tzdata file (from http://www.iana.org/time-zones, grab the "data" tgz)
+- note exact file size of the tgz
+- edit src/conf/MANIFEST.MF and
+  - update all 2014? to the latest (eg. 2014i->2014j)
+  - Update the OlsonDatabase-FileSize to be the size of the new tgz file
+  - edit pom.xml to make the same version change (2014i->2014j)
+- cd to src/main/java/org/joda/time/tz/src
+- untar the tzdata.tar.gz into this directory, overwriting the existing files. Ignore any new files untarred, they can be deleted.
+- Commit the changes
+- At the root, type "mvn package"
+
+
