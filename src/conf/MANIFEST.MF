@@ -21,3 +21,5 @@ Export-Package: org.joda.time;version=2.7-2014j,
  org.joda.time.tz;version=2.7-2014j
 Bundle-License: Apache 2.0
 Bundle-DocURL: http://www.joda.org/joda-time/
+OlsonDatabase-FileName: tzdata2014j.tar.gz
+OlsonDatabase-FileSize: 290688

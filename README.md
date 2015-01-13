@@ -9,6 +9,7 @@ Flightstats Build Instructions
 - note exact file size of the tgz
 - edit src/conf/MANIFEST.MF and
   - update all 2014? to the latest (eg. 2014i->2014j)
+  - Update the OlsonDatabase-FileSize to be the size of the new tgz file
   - edit pom.xml to make the same version change (2014i->2014j)
 - cd to src/main/java/org/joda/time/tz/src
 - untar the tzdata.tar.gz into this directory, overwriting the existing files. Ignore any new files untarred, they can be deleted.
