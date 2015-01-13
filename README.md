@@ -1,11 +1,31 @@
-Joda-Time
+Joda-Time (FlightStats edition)
 ---------
+
+### FlightStats information
+
+Flightstats Build Instructions
+- Make sure you're using JDK 1.7 (at least as of 2014j)
+- download tzdata file (from http://www.iana.org/time-zones, grab the "data" tgz)
+- note exact file size of the tgz
+- edit src/conf/MANIFEST.MF and
+  - update all 2014? to the latest (eg. 2014i->2014j)
+  - edit pom.xml to make the same version change (2014i->2014j)
+- cd to src/main/java/org/joda/time/tz/src
+- untar the tzdata.tar.gz into this directory, overwriting the existing files. Ignore any new files untarred, they can be deleted.
+- Commit the changes
+- At the root, type "mvn package"
+- You might need to fix a unit test if some bit of data changed (usually a country string/code).
+- upload to our artifactory. Choose the joda-time-2.2-xxx.jar from the target directory, upload to ext-release-local. It figures out the rest of the path for you from the pom.
+  - repeat with the sources and javadoc jars
+- Email engineering with the updated version and a summary of which regions were affected and when the change will be important
 
 Joda-Time provides a quality replacement for the Java date and time classes.
 The design allows for multiple calendar systems, while still providing a simple API.
 The 'default' calendar is the ISO8601 standard which is used by XML.
 The Gregorian, Julian, Buddhist, Coptic, Ethiopic and Islamic systems are also included, and we welcome further additions.
 Supporting classes include time zone, duration, format and parsing. 
+
+### Back to your regular documentation
 
 As a flavour of Joda-Time, here's some example code:
 
