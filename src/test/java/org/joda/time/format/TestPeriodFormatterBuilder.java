@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2006 Stephen Colebourne
+ *  Copyright 2001-2014 Stephen Colebourne
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -40,6 +40,8 @@ public class TestPeriodFormatterBuilder extends TestCase {
     private static final Period EMPTY_YEAR_DAY_PERIOD = new Period(0, 0, 0, 0, 0, 0, 0, 0, PeriodType.yearDayTime());
     private static final Period TIME_PERIOD = new Period(0, 0, 0, 0, 5, 6, 7, 8);
     private static final Period DATE_PERIOD = new Period(1, 2, 3, 4, 0, 0, 0, 0);
+    private static final String NULL_STRING = null;
+    private static final String[] NULL_STRING_ARRAY = null;
 
     //private static final DateTimeZone PARIS = DateTimeZone.forID("Europe/Paris");
     private static final DateTimeZone LONDON = DateTimeZone.forID("Europe/London");
@@ -338,6 +340,26 @@ public class TestPeriodFormatterBuilder extends TestCase {
         } catch (IllegalArgumentException ex) {}
     }
 
+    public void testFormatPrefixSimple4IgnoringPrefix() {
+        PeriodFormatter f = builder.appendPrefix("m").appendMinutes()
+                .appendSeparator(" ").appendPrefix("ms").appendMillis().toFormatter();
+        String oneMS = Period.millis(1).toString(f);
+        assertEquals("ms1", oneMS);
+        Period period = f.parsePeriod(oneMS);
+        assertEquals(Period.millis(1), period);
+        period = f.parsePeriod(oneMS.toUpperCase(Locale.ENGLISH));
+        assertEquals(Period.millis(1), period);
+    }
+
+    public void testPluralAffixParseOrder() {
+        PeriodFormatter f = builder.appendDays().appendSuffix("day", "days").toFormatter();
+        String twoDays = Period.days(2).toString(f);
+        Period period = f.parsePeriod(twoDays);
+        assertEquals(Period.days(2), period);
+        period = f.parsePeriod(twoDays.toUpperCase(Locale.ENGLISH));
+        assertEquals(Period.days(2), period);
+    }
+
     public void testFormatPrefixPlural1() {
         PeriodFormatter f = builder.appendPrefix("Year:", "Years:").appendYears().toFormatter();
         assertEquals("Year:1", f.print(PERIOD));
@@ -372,9 +394,126 @@ public class TestPeriodFormatterBuilder extends TestCase {
             fail();
         } catch (IllegalArgumentException ex) {}
         try {
-            builder.appendPrefix(null, null);
+            builder.appendPrefix(NULL_STRING, null);
             fail();
         } catch (IllegalArgumentException ex) {}
+    }
+    
+    public void testFormatPrefixPlural4IgnoringPrefix() {
+        PeriodFormatter f = builder.appendPrefix("m", "ms").appendMinutes()
+                .appendSeparator(" ").appendPrefix("mss", "msss").appendMillis().toFormatter();
+        String oneMS = Period.millis(1).toString(f);
+        assertEquals("mss1", oneMS);
+        Period period = f.parsePeriod(oneMS);
+        assertEquals(Period.millis(1), period);
+        period = f.parsePeriod(oneMS.toUpperCase(Locale.ENGLISH));
+        assertEquals(Period.millis(1), period);
+        
+        String twoMS = Period.millis(2).toString(f);
+        assertEquals("msss2", twoMS);
+        Period period2 = f.parsePeriod(twoMS);
+        assertEquals(Period.millis(2), period2);
+        period = f.parsePeriod(twoMS.toUpperCase(Locale.ENGLISH));
+        assertEquals(Period.millis(2), period2);
+    }
+    
+    public void testRegExAffixParseOrder() {
+        PeriodFormatter f = builder.appendDays()
+                .appendSuffix(new String[]{"^1$","[0-9]*"}, new String[]{"day", "days"}).toFormatter();
+        String twoDays = Period.days(2).toString(f);
+        Period period = f.parsePeriod(twoDays);
+        assertEquals(Period.days(2), period);
+        period = f.parsePeriod(twoDays.toUpperCase(Locale.ENGLISH));
+        assertEquals(Period.days(2), period);
+    }
+
+    public void testFormatPrefixRegEx1() {
+        PeriodFormatter f = builder.appendPrefix(new String[] { "^1$", "^.*$" }, new String[] { "Year:", "Years:" }).appendYears()
+                .toFormatter();
+        assertEquals("Year:1", f.print(PERIOD));
+        assertEquals(6, f.getPrinter().calculatePrintedLength(PERIOD, null));
+        assertEquals(1, f.getPrinter().countFieldsToPrint(PERIOD, Integer.MAX_VALUE, null));
+
+        Period p = new Period(0, 0, 0, 0, 0, 0, 0, 0);
+        assertEquals("Years:0", f.print(p));
+        assertEquals(7, f.getPrinter().calculatePrintedLength(p, null));
+        assertEquals(1, f.getPrinter().countFieldsToPrint(p, Integer.MAX_VALUE, null));
+    }
+
+    public void testFormatPrefixRegEx2() {
+        PeriodFormatter f = builder.appendPrefix(new String[] { "^1$", "^.*$" }, new String[] { "Hour:", "Hours:" }).appendHours()
+                .toFormatter();
+        assertEquals("Hours:5", f.print(PERIOD));
+        assertEquals(7, f.getPrinter().calculatePrintedLength(PERIOD, null));
+        assertEquals(1, f.getPrinter().countFieldsToPrint(PERIOD, Integer.MAX_VALUE, null));
+
+        Period p = new Period(0, 0, 0, 0, 0, 0, 0, 0);
+        assertEquals("Hours:0", f.print(p));
+        assertEquals(7, f.getPrinter().calculatePrintedLength(p, null));
+        assertEquals(1, f.getPrinter().countFieldsToPrint(p, Integer.MAX_VALUE, null));
+    }
+
+    public void testFormatPrefixRegEx3() {
+        try {
+            builder.appendPrefix(null, new String[0]);
+            fail();
+        } catch (IllegalArgumentException ex) {
+        }
+        try {
+            builder.appendPrefix(new String[0], null);
+            fail();
+        } catch (IllegalArgumentException ex) {
+        }
+        try {
+            builder.appendPrefix(NULL_STRING_ARRAY, null);
+            fail();
+        } catch (IllegalArgumentException ex) {
+        }
+        try {
+            builder.appendPrefix(new String[0], new String[0]);
+            fail();
+        } catch (IllegalArgumentException ex) {
+        }
+        try {
+            builder.appendPrefix(new String[1], new String[2]);
+            fail();
+        } catch (IllegalArgumentException ex) {
+        }
+    }
+
+    public void testFormatPrefixRegEx4IgnoringPrefix() {
+        PeriodFormatter f = builder
+                .appendPrefix(new String[]{"^1$","[0-9]*"}, new String[]{"m", "ms"}).appendMinutes()
+                .appendSeparator(" ")
+                .appendPrefix(new String[]{"^1$","[0-9]*"}, new String[]{"mss", "msss"}).appendMillis()
+                .toFormatter();
+        String oneMS = Period.millis(1).toString(f);
+        assertEquals("mss1", oneMS);
+        Period period = f.parsePeriod(oneMS);
+        assertEquals(Period.millis(1), period);
+        period = f.parsePeriod(oneMS.toUpperCase(Locale.ENGLISH));
+        assertEquals(Period.millis(1), period);
+        
+        String twoMS = Period.millis(2).toString(f);
+        assertEquals("msss2", twoMS);
+        Period period2 = f.parsePeriod(twoMS);
+        assertEquals(Period.millis(2), period2);
+        period = f.parsePeriod(twoMS.toUpperCase(Locale.ENGLISH));
+        assertEquals(Period.millis(2), period2);
+    }
+
+    //-----------------------------------------------------------------------
+    public void testFormatPrefixComposite1() {
+        PeriodFormatter f = builder.appendPrefix("d")
+                .appendPrefix("a", "ay")
+                .appendPrefix(new String[] { "^1$", "^.*$" }, new String[] { "y:", "s:" })
+                .appendDays().toFormatter();
+        String oneMS = Period.days(2).toString(f);
+        assertEquals("days:2", oneMS);
+        Period period = f.parsePeriod(oneMS);
+        assertEquals(Period.days(2), period);
+        period = f.parsePeriod(oneMS.toUpperCase(Locale.ENGLISH));
+        assertEquals(Period.days(2), period);
     }
 
     //-----------------------------------------------------------------------
@@ -415,6 +554,28 @@ public class TestPeriodFormatterBuilder extends TestCase {
             fail();
         } catch (IllegalStateException ex) {}
     }
+    
+    public void testFormatPrefixSimple5IgnoringPrefix() {
+        PeriodFormatter f = builder.appendMinutes().appendSuffix("m")
+                .appendSeparator(" ").appendMillis().appendSuffix("ms").toFormatter();
+        String oneMS = Period.millis(1).toString(f);
+        assertEquals("1ms", oneMS);
+        Period period = f.parsePeriod(oneMS);
+        assertEquals(Period.millis(1), period);
+        period = f.parsePeriod(oneMS.toUpperCase(Locale.ENGLISH));
+        assertEquals(Period.millis(1), period);
+    }
+
+    public void testFormatPrefixSimple6IgnoringPrefix() {
+        PeriodFormatter f = builder.appendMinutes().appendSuffix("M")
+                .appendSeparator(" ").appendMillis().appendSuffix("ms").toFormatter();
+        String oneMS = Period.millis(1).toString(f);
+        assertEquals("1ms", oneMS);
+        Period period = f.parsePeriod(oneMS);
+        assertEquals(Period.millis(1), period);
+        period = f.parsePeriod(oneMS.toUpperCase(Locale.ENGLISH));
+        assertEquals(Period.millis(1), period);
+    }
 
     public void testFormatSuffixPlural1() {
         PeriodFormatter f = builder.appendYears().appendSuffix(" year", " years").toFormatter();
@@ -450,7 +611,7 @@ public class TestPeriodFormatterBuilder extends TestCase {
             fail();
         } catch (IllegalArgumentException ex) {}
         try {
-            builder.appendSuffix(null, null);
+            builder.appendSuffix(NULL_STRING, null);
             fail();
         } catch (IllegalArgumentException ex) {}
     }
@@ -461,7 +622,144 @@ public class TestPeriodFormatterBuilder extends TestCase {
             fail();
         } catch (IllegalStateException ex) {}
     }
+    
+    public void testFormatSuffixPlural4IgnoringPrefix() {
+        PeriodFormatter f = builder.appendMinutes().appendSuffix("m", "ms")
+                .appendSeparator(" ").appendMillis().appendSuffix("mss", "msss").toFormatter();
+        String oneMS = Period.millis(1).toString(f);
+        assertEquals("1mss", oneMS);
+        Period period = f.parsePeriod(oneMS);
+        assertEquals(Period.millis(1), period);
+        period = f.parsePeriod(oneMS.toUpperCase(Locale.ENGLISH));
+        assertEquals(Period.millis(1), period);
+        
+        String twoMS = Period.millis(2).toString(f);
+        assertEquals("2msss", twoMS);
+        Period period2 = f.parsePeriod(twoMS);
+        assertEquals(Period.millis(2), period2);
+        period = f.parsePeriod(twoMS.toUpperCase(Locale.ENGLISH));
+        assertEquals(Period.millis(2), period);
+    }
 
+    public void testFormatSuffixRegEx1() {
+        PeriodFormatter f = builder.appendYears().appendSuffix(new String[] { "^1$", "^2$" }, new String[] { " year", " years" })
+                .toFormatter();
+        assertEquals("1 year", f.print(PERIOD));
+        assertEquals(6, f.getPrinter().calculatePrintedLength(PERIOD, null));
+        assertEquals(1, f.getPrinter().countFieldsToPrint(PERIOD, Integer.MAX_VALUE, null));
+        
+        Period p2 = new Period(2, 0, 0, 0, 0, 0, 0, 0);
+        assertEquals("2 years", f.print(p2));
+        assertEquals(7, f.getPrinter().calculatePrintedLength(p2, null));
+        assertEquals(1, f.getPrinter().countFieldsToPrint(p2, Integer.MAX_VALUE, null));
+        
+        Period p0 = new Period(0, 0, 0, 0, 0, 0, 0, 0);
+        assertEquals("0 years", f.print(p0));
+        assertEquals(7, f.getPrinter().calculatePrintedLength(p0, null));
+        assertEquals(1, f.getPrinter().countFieldsToPrint(p0, Integer.MAX_VALUE, null));
+    }
+
+    public void testFormatSuffixRegEx2() {
+        PeriodFormatter f = builder.appendHours().appendSuffix(new String[] { "^1$", "^2$" }, new String[] { " hour", " hours" }).toFormatter();
+        assertEquals("5 hours", f.print(PERIOD));
+        assertEquals(7, f.getPrinter().calculatePrintedLength(PERIOD, null));
+        assertEquals(1, f.getPrinter().countFieldsToPrint(PERIOD, Integer.MAX_VALUE, null));
+
+        Period p2 = new Period(0, 0, 0, 0, 2, 0, 0, 0);
+        assertEquals("2 hours", f.print(p2));
+        assertEquals(7, f.getPrinter().calculatePrintedLength(p2, null));
+        assertEquals(1, f.getPrinter().countFieldsToPrint(p2, Integer.MAX_VALUE, null));
+
+        Period p0 = new Period(0, 0, 0, 0, 0, 0, 0, 0);
+        assertEquals("0 hours", f.print(p0));
+        assertEquals(7, f.getPrinter().calculatePrintedLength(p0, null));
+        assertEquals(1, f.getPrinter().countFieldsToPrint(p0, Integer.MAX_VALUE, null));
+    }
+
+    public void testFormatSuffixRegEx3() {
+        try {
+            builder.appendSuffix(null, new String[0]);
+            fail();
+        } catch (IllegalArgumentException ex) {
+        }
+        try {
+            builder.appendSuffix(new String[0], null);
+            fail();
+        } catch (IllegalArgumentException ex) {
+        }
+        try {
+            builder.appendSuffix(NULL_STRING_ARRAY, null);
+            fail();
+        } catch (IllegalArgumentException ex) {
+        }
+        try {
+            builder.appendSuffix(new String[0], new String[0]);
+            fail();
+        } catch (IllegalArgumentException ex) {
+        }
+        try {
+            builder.appendSuffix(new String[1], new String[2]);
+            fail();
+        } catch (IllegalArgumentException ex) {
+        }
+    }
+
+    public void testFormatSuffixRegEx4() {
+        try {
+            builder.appendSuffix(new String[] { "^1$", "^.*$" }, new String[] { " hour", " hours" });
+            fail();
+        } catch (IllegalStateException ex) {
+        }
+    }
+
+    public void testFormatSuffixRegEx5IgnoringAffix() {
+        PeriodFormatter f = builder
+                .appendMinutes().appendSuffix(new String[]{"^1$","[0-9]*"}, new String[]{"m", "ms"})
+                .appendSeparator(" ")
+                .appendMillis().appendSuffix(new String[]{"^1$","[0-9]*"}, new String[]{"mss", "msss"})
+                .toFormatter();
+        String oneMS = Period.millis(1).toString(f);
+        assertEquals("1mss", oneMS);
+        Period period = f.parsePeriod(oneMS);
+        assertEquals(Period.millis(1), period);
+        period = f.parsePeriod(oneMS.toUpperCase(Locale.ENGLISH));
+        assertEquals(Period.millis(1), period);
+        
+        String twoMS = Period.millis(2).toString(f);
+        assertEquals("2msss", twoMS);
+        Period period2 = f.parsePeriod(twoMS);
+        assertEquals(Period.millis(2), period2);
+        period = f.parsePeriod(twoMS.toUpperCase(Locale.ENGLISH));
+        assertEquals(Period.millis(2), period);
+    }
+    //-----------------------------------------------------------------------
+    public void testFormatSuffixComposite1() {
+        PeriodFormatter f = builder.appendDays().appendSuffix("d")
+                .appendSuffix("a", "ay")
+                .appendSuffix(new String[] { "^1$", "^.*$" }, new String[] { "y", "s" })
+                .toFormatter();
+        String oneMS = Period.days(2).toString(f);
+        assertEquals("2days", oneMS);
+        Period period = f.parsePeriod(oneMS);
+        assertEquals(Period.days(2), period);
+        period = f.parsePeriod(oneMS.toUpperCase(Locale.ENGLISH));
+        assertEquals(Period.days(2), period);
+    }
+
+    public void testFormatSuffixComposite5IgnoringAffix() {
+        PeriodFormatter f = builder
+                .appendMinutes().appendSuffix("m")
+                .appendSeparator(" ")
+                .appendMillis().appendSuffix("m").appendSuffix("s")
+                .toFormatter();
+        String oneMS = Period.millis(1).toString(f);
+        assertEquals("1ms", oneMS);
+        Period period = f.parsePeriod(oneMS);
+        assertEquals(Period.millis(1), period);
+        period = f.parsePeriod(oneMS.toUpperCase(Locale.ENGLISH));
+        assertEquals(Period.millis(1), period);
+    }
+    
     //-----------------------------------------------------------------------
     public void testFormatPrefixSuffix() {
         PeriodFormatter f = builder.appendPrefix("P").appendYears().appendSuffix("Y").toFormatter();
@@ -867,6 +1165,22 @@ public class TestPeriodFormatterBuilder extends TestCase {
             .toFormatter();
         pfmt1.parsePeriod("PT1003199059S");
         pfmt2.parsePeriod("PT1003199059S");
+        pfmt2.parsePeriod("pt1003199059S");
     }
 
+    public void testMonthsAndMinutesAreConsideredSeparateAndCaseIsNotIgnored() {
+        PeriodFormatter formatter = builder
+                .appendMonths().appendSuffix("M").appendSeparator(" ")
+                .appendMinutes().appendSuffix("m").appendSeparator(" ")
+                .toFormatter();
+
+        String oneMonth = Period.months(1).toString(formatter);
+        assertEquals("1M", oneMonth);
+        Period period = formatter.parsePeriod(oneMonth);
+        assertEquals(Period.months(1), period);
+        String oneMinute = Period.minutes(1).toString(formatter);
+        assertEquals("1m", oneMinute);
+        period = formatter.parsePeriod(oneMinute);
+        assertEquals(Period.minutes(1), period);
+    }
 }

@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Stephen Colebourne
+ *  Copyright 2001-2014 Stephen Colebourne
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,8 +19,7 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.joda.time.Chronology;
 import org.joda.time.DateTimeFieldType;
@@ -47,22 +46,16 @@ import org.joda.time.field.RemainderDateTimeField;
  * @since 1.0
  */
 public final class ISOChronology extends AssembledChronology {
-    
+
     /** Serialization lock */
     private static final long serialVersionUID = -6212696554273812441L;
 
     /** Singleton instance of a UTC ISOChronology */
     private static final ISOChronology INSTANCE_UTC;
-        
-    private static final int FAST_CACHE_SIZE = 64;
-
-    /** Fast cache of zone to chronology */
-    private static final ISOChronology[] cFastCache;
 
     /** Cache of zone to chronology */
-    private static final Map<DateTimeZone, ISOChronology> cCache = new HashMap<DateTimeZone, ISOChronology>();
+    private static final ConcurrentHashMap<DateTimeZone, ISOChronology> cCache = new ConcurrentHashMap<DateTimeZone, ISOChronology>();
     static {
-        cFastCache = new ISOChronology[FAST_CACHE_SIZE];
         INSTANCE_UTC = new ISOChronology(GregorianChronology.getInstanceUTC());
         cCache.put(DateTimeZone.UTC, INSTANCE_UTC);
     }
@@ -96,19 +89,14 @@ public final class ISOChronology extends AssembledChronology {
         if (zone == null) {
             zone = DateTimeZone.getDefault();
         }
-        int index = System.identityHashCode(zone) & (FAST_CACHE_SIZE - 1);
-        ISOChronology chrono = cFastCache[index];
-        if (chrono != null && chrono.getZone() == zone) {
-            return chrono;
-        }
-        synchronized (cCache) {
-            chrono = cCache.get(zone);
-            if (chrono == null) {
-                chrono = new ISOChronology(ZonedChronology.getInstance(INSTANCE_UTC, zone));
-                cCache.put(zone, chrono);
+        ISOChronology chrono = cCache.get(zone);
+        if (chrono == null) {
+            chrono = new ISOChronology(ZonedChronology.getInstance(INSTANCE_UTC, zone));
+            ISOChronology oldChrono = cCache.putIfAbsent(zone, chrono);
+            if (oldChrono != null) {
+                chrono = oldChrono;
             }
         }
-        cFastCache[index] = chrono;
         return chrono;
     }
 
@@ -170,15 +158,16 @@ public final class ISOChronology extends AssembledChronology {
             // Use zero based century and year of century.
             fields.centuryOfEra = new DividedDateTimeField(
                 ISOYearOfEraDateTimeField.INSTANCE, DateTimeFieldType.centuryOfEra(), 100);
+            fields.centuries = fields.centuryOfEra.getDurationField();
+            
             fields.yearOfCentury = new RemainderDateTimeField(
                 (DividedDateTimeField) fields.centuryOfEra, DateTimeFieldType.yearOfCentury());
             fields.weekyearOfCentury = new RemainderDateTimeField(
-                (DividedDateTimeField) fields.centuryOfEra, DateTimeFieldType.weekyearOfCentury());
-
-            fields.centuries = fields.centuryOfEra.getDurationField();
+                (DividedDateTimeField) fields.centuryOfEra, fields.weekyears, DateTimeFieldType.weekyearOfCentury());
         }
     }
 
+    //-----------------------------------------------------------------------
     /**
      * Checks if this chronology instance equals another.
      * 
@@ -187,7 +176,14 @@ public final class ISOChronology extends AssembledChronology {
      * @since 1.6
      */
     public boolean equals(Object obj) {
-        return super.equals(obj);
+        if (this == obj) {
+            return true;
+        }
+        if (obj instanceof ISOChronology) {
+            ISOChronology chrono = (ISOChronology) obj;
+            return getZone().equals(chrono.getZone());
+        }
+        return false;
     }
 
     /**
@@ -200,6 +196,7 @@ public final class ISOChronology extends AssembledChronology {
         return "ISO".hashCode() * 11 + getZone().hashCode();
     }
 
+    //-----------------------------------------------------------------------
     /**
      * Serialize ISOChronology instances using a small stub. This reduces the
      * serialized size, and deserialized instances come from the cache.

@@ -84,6 +84,30 @@ public class TestCompiler extends TestCase {
         DateTimeZone.setDefault(originalDateTimeZone);
     }
 
+    //-----------------------------------------------------------------------
+    public void testDateTimeZoneBuilder() throws Exception {
+        // test multithreading, issue #18
+        getTestDataTimeZoneBuilder().toDateTimeZone("TestDTZ1", true);
+        final DateTimeZone[] zone = new DateTimeZone[1];
+        Thread t = new Thread(new Runnable() {
+            public void run() {
+                zone[0] = getTestDataTimeZoneBuilder().toDateTimeZone("TestDTZ2", true);
+            }
+        });
+        t.start();
+        t.join();
+        assertNotNull(zone[0]);
+    }
+
+    private DateTimeZoneBuilder getTestDataTimeZoneBuilder() {
+         return new DateTimeZoneBuilder()
+             .addCutover(1601, 'w', 1, 1, 1, false, 7200000)
+             .setStandardOffset(3600000)
+             .addRecurringSavings("", 3600000, 1601, Integer.MAX_VALUE, 'w', 3, -1, 1, false, 7200000)
+             .addRecurringSavings("", 0, 1601, Integer.MAX_VALUE, 'w', 10, -1, 1, false, 10800000);
+    }    
+
+    //-----------------------------------------------------------------------
     public void testCompile() throws Exception {
         Provider provider = compileAndLoad(AMERICA_LOS_ANGELES_FILE);
         DateTimeZone tz = provider.getZone("America/Los_Angeles");
@@ -165,6 +189,16 @@ public class TestCompiler extends TestCase {
         assertEquals(4, test.iMonthOfYear);  // Apr
         assertEquals(1, test.iDayOfMonth);   // 1st
         assertEquals(1, test.iDayOfWeek);    // Mon
+        assertEquals(0, test.iMillisOfDay);  // 00:00
+        assertEquals(false, test.iAdvanceDayOfWeek);
+    }
+
+    public void test_2400_specific_day() {
+        StringTokenizer st = new StringTokenizer("Sep 21 24:00");
+        DateTimeOfYear test = new DateTimeOfYear(st);
+        assertEquals(9, test.iMonthOfYear);  // Sep
+        assertEquals(22, test.iDayOfMonth);   // 22st
+        assertEquals(0, test.iDayOfWeek);    // Ignored
         assertEquals(0, test.iMillisOfDay);  // 00:00
         assertEquals(false, test.iAdvanceDayOfWeek);
     }

@@ -45,14 +45,14 @@ import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.ISODateTimeFormat;
 
 /**
- * Compiles Olson ZoneInfo database files into binary files for each time zone
+ * Compiles IANA ZoneInfo database files into binary files for each time zone
  * in the database. {@link DateTimeZoneBuilder} is used to construct and encode
  * compiled data files. {@link ZoneInfoProvider} loads the encoded files and
  * converts them back into {@link DateTimeZone} objects.
  * <p>
  * Although this tool is similar to zic, the binary formats are not
- * compatible. The latest Olson database files may be obtained
- * <a href="http://www.twinsun.com/tz/tz-link.htm">here</a>.
+ * compatible. The latest IANA time zone database files may be obtained
+ * <a href="http://www.iana.org/time-zones">here</a>.
  * <p>
  * ZoneInfoCompiler is mutable and not thread-safe, although the main method
  * may be safely invoked by multiple threads.
@@ -65,10 +65,11 @@ public class ZoneInfoCompiler {
 
     static Chronology cLenientISO;
 
-    static ThreadLocal<Boolean> cVerbose = new ThreadLocal<Boolean>();
-    static {
-        cVerbose.set(Boolean.FALSE);
-    }
+    static ThreadLocal<Boolean> cVerbose = new ThreadLocal<Boolean>() {
+        protected Boolean initialValue() {
+            return Boolean.FALSE;
+        }
+    };
 
     /**
      * Gets a flag indicating that verbose logging is required.
@@ -584,14 +585,14 @@ public class ZoneInfoCompiler {
                             if (month == 12 && day == 31) {
                                 millis = parseTime("23:59:59.999");
                             } else {
-                            LocalDate date = (day == -1 ?
-                                    new LocalDate(2001, month, 1).plusMonths(1) :
-                                    new LocalDate(2001, month, day).plusDays(1));
+                                LocalDate date = (day == -1 ?
+                                        new LocalDate(2001, month, 1).plusMonths(1) :
+                                        new LocalDate(2001, month, day).plusDays(1));
                                 advance = (day != -1 && dayOfWeek != 0);
-                            month = date.getMonthOfYear();
-                            day = date.getDayOfMonth();
+                                month = date.getMonthOfYear();
+                                day = date.getDayOfMonth();
                                 if (dayOfWeek != 0) {
-                            dayOfWeek = ((dayOfWeek - 1 + 1) % 7) + 1;
+                                    dayOfWeek = ((dayOfWeek - 1 + 1) % 7) + 1;
                                 }
                             }
                         } else {

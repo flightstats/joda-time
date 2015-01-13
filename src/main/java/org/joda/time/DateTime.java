@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2013 Stephen Colebourne
+ *  Copyright 2001-2014 Stephen Colebourne
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -123,7 +123,23 @@ public final class DateTime
     /**
      * Parses a {@code DateTime} from the specified string.
      * <p>
-     * This uses {@link ISODateTimeFormat#dateTimeParser()}.
+     * This uses {@link ISODateTimeFormat#dateTimeParser().withOffsetParsed()}
+     * which is different to passing a {@code String} to the constructor.
+     * <p>
+     * Sometimes this method and {@code new DateTime(str)} return different results.
+     * This can be confusing as the different is not visible in {@link #toString()}.
+     * <p>
+     * When passed a date-time string without an offset, such as '2010-06-30T01:20',
+     * both the constructor and this method use the default time-zone.
+     * As such, {@code DateTime.parse("2010-06-30T01:20")} and
+     * {@code new DateTime("2010-06-30T01:20"))} are equal.
+     * <p>
+     * However, when this method is passed a date-time string with an offset,
+     * the offset is directly parsed and stored.
+     * As such, {@code DateTime.parse("2010-06-30T01:20+02:00")} and
+     * {@code new DateTime("2010-06-30T01:20+02:00"))} are NOT equal.
+     * The object produced via this method has a zone of {@code DateTimeZone.forOffsetHours(1)}.
+     * The object produced via the constructor has a zone of {@code DateTimeZone.getDefault()}.
      * 
      * @param str  the string to parse, not null
      * @since 2.0
@@ -715,6 +731,21 @@ public final class DateTime
     }
 
     /**
+     * Returns a copy of this datetime with the specified date, retaining the time fields.
+     * <p>
+     * This instance is immutable and unaffected by this method call.
+     *
+     * @param date  the local date
+     * @return a copy of this datetime with a different date
+     * @throws IllegalArgumentException if the time-of-day is invalid for the date
+     * @throws NullPointerException if the date is null
+     */
+    public DateTime withDate(LocalDate date) {
+        return withDate(
+            date.getYear(), date.getMonthOfYear(), date.getDayOfMonth());
+    }
+
+    /**
      * Returns a copy of this datetime with the specified time, retaining the date fields.
      * <p>
      * If the time is already the time passed in, then <code>this</code> is returned.
@@ -741,6 +772,21 @@ public final class DateTime
         instant = chrono.secondOfMinute().set(instant, secondOfMinute);
         instant = chrono.millisOfSecond().set(instant, millisOfSecond);
         return withMillis(instant);
+    }
+
+    /**
+     * Returns a copy of this datetime with the specified time, retaining the date fields.
+     * <p>
+     * This instance is immutable and unaffected by this method call.
+     *
+     * @param time  the local time
+     * @return a copy of this datetime with a different time
+     * @throws IllegalArgumentException if the time-of-day is invalid for the date
+     * @throws NullPointerException if the time is null
+     */
+    public DateTime withTime(LocalTime time) {
+        return withTime(
+            time.getHourOfDay(), time.getMinuteOfHour(), time.getSecondOfMinute(), time.getMillisOfSecond());
     }
 
     /**
@@ -1498,7 +1544,9 @@ public final class DateTime
      * same millis and chronology.
      * 
      * @return a DateMidnight using the same millis and chronology
+     * @deprecated DateMidnight is deprecated
      */
+    @Deprecated
     public DateMidnight toDateMidnight() {
         return new DateMidnight(getMillis(), getChronology());
     }

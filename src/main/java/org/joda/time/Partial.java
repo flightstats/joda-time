@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Stephen Colebourne
+ *  Copyright 2001-2013 Stephen Colebourne
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -164,6 +164,8 @@ public final class Partial
     /**
      * Constructs a Partial with the specified fields and values.
      * The fields must be specified in the order largest to smallest.
+     * For year and weekyear fields with equal duration, year is defined
+     * as being larger than weekyear.
      * <p>
      * The constructor uses the specified chronology.
      * 
@@ -178,6 +180,8 @@ public final class Partial
     /**
      * Constructs a Partial with the specified fields and values.
      * The fields must be specified in the order largest to smallest.
+     * For year and weekyear fields with equal duration, year is defined
+     * as being larger than weekyear.
      * <p>
      * The constructor uses the specified chronology.
      * 
@@ -214,28 +218,49 @@ public final class Partial
             DateTimeFieldType loopType = types[i];
             DurationField loopUnitField = loopType.getDurationType().getField(iChronology);
             if (i > 0) {
+                if (loopUnitField.isSupported() == false) {
+                    if (lastUnitField.isSupported()) {
+                        throw new IllegalArgumentException("Types array must be in order largest-smallest: " +
+                                        types[i - 1].getName() + " < " + loopType.getName());
+                    } else {
+                        throw new IllegalArgumentException("Types array must not contain duplicate unsupported: " +
+                                        types[i - 1].getName() + " and " + loopType.getName());
+                    }
+                }
                 int compare = lastUnitField.compareTo(loopUnitField);
-                if (compare < 0 || (compare != 0 && loopUnitField.isSupported() == false)) {
+                if (compare < 0) {
                     throw new IllegalArgumentException("Types array must be in order largest-smallest: " +
                             types[i - 1].getName() + " < " + loopType.getName());
                 } else if (compare == 0) {
-                    if (types[i - 1].getRangeDurationType() == null) {
-                        if (loopType.getRangeDurationType() == null) {
-                            throw new IllegalArgumentException("Types array must not contain duplicate: " + loopType.getName());
+                    if (lastUnitField.equals(loopUnitField)) {
+                        DurationFieldType lastRangeType = types[i - 1].getRangeDurationType();
+                        DurationFieldType loopRangeType = loopType.getRangeDurationType();
+                        if (lastRangeType == null) {
+                            if (loopRangeType == null) {
+                                throw new IllegalArgumentException("Types array must not contain duplicate: " +
+                                                types[i - 1].getName() + " and " + loopType.getName());
+                            }
+                        } else {
+                            if (loopRangeType == null) {
+                                throw new IllegalArgumentException("Types array must be in order largest-smallest: " +
+                                        types[i - 1].getName() + " < " + loopType.getName());
+                            }
+                            DurationField lastRangeField = lastRangeType.getField(iChronology);
+                            DurationField loopRangeField = loopRangeType.getField(iChronology);
+                            if (lastRangeField.compareTo(loopRangeField) < 0) {
+                                throw new IllegalArgumentException("Types array must be in order largest-smallest: " +
+                                        types[i - 1].getName() + " < " + loopType.getName());
+                            }
+                            if (lastRangeField.compareTo(loopRangeField) == 0) {
+                                throw new IllegalArgumentException("Types array must not contain duplicate: " +
+                                                types[i - 1].getName() + " and " + loopType.getName());
+                            }
                         }
                     } else {
-                        if (loopType.getRangeDurationType() == null) {
-                            throw new IllegalArgumentException("Types array must be in order largest-smallest: " +
-                                    types[i - 1].getName() + " < " + loopType.getName());
-                        }
-                        DurationField lastRangeField = types[i - 1].getRangeDurationType().getField(iChronology);
-                        DurationField loopRangeField = loopType.getRangeDurationType().getField(iChronology);
-                        if (lastRangeField.compareTo(loopRangeField) < 0) {
-                            throw new IllegalArgumentException("Types array must be in order largest-smallest: " +
-                                    types[i - 1].getName() + " < " + loopType.getName());
-                        }
-                        if (lastRangeField.compareTo(loopRangeField) == 0) {
-                            throw new IllegalArgumentException("Types array must not contain duplicate: " + loopType.getName());
+                        if (lastUnitField.isSupported() && lastUnitField.getType() != DurationFieldType.YEARS_TYPE) {
+                            throw new IllegalArgumentException("Types array must be in order largest-smallest," +
+                                            " for year-based fields, years is defined as being largest: " +
+                                            types[i - 1].getName() + " < " + loopType.getName());
                         }
                     }
                 }
@@ -358,7 +383,7 @@ public final class Partial
 
     //-----------------------------------------------------------------------
     /**
-     * Gets the value of the field at the specifed index.
+     * Gets the value of the field at the specified index.
      * 
      * @param index  the index
      * @return the value
@@ -444,6 +469,12 @@ public final class Partial
                         if (compare > 0) {
                             break;
                         } else if (compare == 0) {
+                            if (fieldType.getRangeDurationType() == null) {
+                                break;
+                            }
+                            if (loopType.getRangeDurationType() == null) {
+                                continue;
+                            }
                             DurationField rangeField = fieldType.getRangeDurationType().getField(iChronology);
                             DurationField loopRangeField = loopType.getRangeDurationType().getField(iChronology);
                             if (rangeField.compareTo(loopRangeField) > 0) {
@@ -459,8 +490,9 @@ public final class Partial
             newValues[i] = value;
             System.arraycopy(iTypes, i, newTypes, i + 1, newTypes.length - i - 1);
             System.arraycopy(iValues, i, newValues, i + 1, newValues.length - i - 1);
-            
-            Partial newPartial = new Partial(iChronology, newTypes, newValues);
+            // use public constructor to ensure full validation
+            // this isn't overly efficient, but is safe
+            Partial newPartial = new Partial(newTypes, newValues, iChronology);
             iChronology.validate(newPartial, newValues);
             return newPartial;
         }

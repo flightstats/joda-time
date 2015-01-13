@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2010 Stephen Colebourne
+ *  Copyright 2001-2013 Stephen Colebourne
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -48,21 +48,18 @@ public class TestLocalDateTime_Basics extends TestCase {
     private static final DateTimeZone PARIS = DateTimeZone.forID("Europe/Paris");
     private static final DateTimeZone LONDON = DateTimeZone.forID("Europe/London");
     private static final DateTimeZone TOKYO = DateTimeZone.forID("Asia/Tokyo");
-    private static final int OFFSET = 1;
+    private static final DateTimeZone NEW_YORK = DateTimeZone.forID("America/New_York");
     private static final GJChronology GJ_UTC = GJChronology.getInstanceUTC();
     private static final Chronology COPTIC_PARIS = CopticChronology.getInstance(PARIS);
     private static final Chronology COPTIC_LONDON = CopticChronology.getInstance(LONDON);
     private static final Chronology COPTIC_TOKYO = CopticChronology.getInstance(TOKYO);
     private static final Chronology COPTIC_UTC = CopticChronology.getInstanceUTC();
-    private static final Chronology ISO_PARIS = ISOChronology.getInstance(PARIS);
     private static final Chronology ISO_LONDON = ISOChronology.getInstance(LONDON);
-    private static final Chronology ISO_TOKYO = ISOChronology.getInstance(TOKYO);
+    private static final Chronology ISO_NEW_YORK = ISOChronology.getInstance(NEW_YORK);
     private static final Chronology ISO_UTC = ISOChronology.getInstanceUTC();
     private static final Chronology GREGORIAN_UTC = GregorianChronology.getInstanceUTC();
-    private static final Chronology BUDDHIST_PARIS = BuddhistChronology.getInstance(PARIS);
     private static final Chronology BUDDHIST_LONDON = BuddhistChronology.getInstance(LONDON);
     private static final Chronology BUDDHIST_TOKYO = BuddhistChronology.getInstance(TOKYO);
-    private static final Chronology BUDDHIST_UTC = BuddhistChronology.getInstanceUTC();
 
 //    private long TEST_TIME1 =
 //        (31L + 28L + 31L + 6L -1L) * DateTimeConstants.MILLIS_PER_DAY
@@ -366,11 +363,15 @@ public class TestLocalDateTime_Basics extends TestCase {
 //            fail();
 //        } catch (ClassCastException ex) {}
         try {
-            test1.compareTo(new YearMonthDay());
+            @SuppressWarnings("deprecation")
+            YearMonthDay ymd = new YearMonthDay();
+            test1.compareTo(ymd);
             fail();
         } catch (ClassCastException ex) {}
         try {
-            test1.compareTo(new TimeOfDay());
+            @SuppressWarnings("deprecation")
+            TimeOfDay tod = new TimeOfDay();
+            test1.compareTo(tod);
             fail();
         } catch (ClassCastException ex) {}
         Partial partial = new Partial()
@@ -790,6 +791,28 @@ public class TestLocalDateTime_Basics extends TestCase {
         assertEquals(expected, test);
     }
 
+    public void testToDateTime_Zone_dstGap() {
+        LocalDateTime base = new LocalDateTime(2014, 3, 30, 1, 30, 0, 0, ISO_LONDON);
+        try {
+            base.toDateTime(LONDON);
+            fail();
+        } catch (IllegalInstantException ex) {}
+    }
+
+    public void testToDateTime_Zone_dstOverlap() {
+        LocalDateTime base = new LocalDateTime(2014, 10, 26, 1, 30, 0, 0, ISO_LONDON);
+        DateTime test = base.toDateTime(LONDON);
+        DateTime expected = new DateTime(2014, 10, 26, 1, 30, ISO_LONDON).withEarlierOffsetAtOverlap();
+        assertEquals(expected, test);
+    }
+
+    public void testToDateTime_Zone_dstOverlap_NewYork() {
+        LocalDateTime base = new LocalDateTime(2007, 11, 4, 1, 30, 0, 0, ISO_NEW_YORK);
+        DateTime test = base.toDateTime(NEW_YORK);
+        DateTime expected = new DateTime(2007, 11, 4, 1, 30, ISO_NEW_YORK).withEarlierOffsetAtOverlap();
+        assertEquals(expected, test);
+    }
+
     //-----------------------------------------------------------------------
     public void testToLocalDate() {
         LocalDateTime base = new LocalDateTime(2005, 6, 9, 6, 7, 8, 9, COPTIC_PARIS); // PARIS irrelevant
@@ -908,6 +931,92 @@ public class TestLocalDateTime_Basics extends TestCase {
         }
     }
 
+    //-----------------------------------------------------------------------
+    public void testToDate_summer_Zone() {
+        LocalDateTime base = new LocalDateTime(2005, 7, 9, 10, 20, 30, 40, COPTIC_PARIS);
+        
+        Date test = base.toDate(TimeZone.getDefault());
+        check(base, 2005, 7, 9, 10, 20, 30, 40);
+        
+        GregorianCalendar gcal = new GregorianCalendar();
+        gcal.clear();
+        gcal.set(Calendar.YEAR, 2005);
+        gcal.set(Calendar.MONTH, Calendar.JULY);
+        gcal.set(Calendar.DAY_OF_MONTH, 9);
+        gcal.set(Calendar.HOUR_OF_DAY, 10);
+        gcal.set(Calendar.MINUTE, 20);
+        gcal.set(Calendar.SECOND, 30);
+        gcal.set(Calendar.MILLISECOND, 40);
+        assertEquals(gcal.getTime(), test);
+    }
+
+    public void testToDate_winter_Zone() {
+        LocalDateTime base = new LocalDateTime(2005, 1, 9, 10, 20, 30, 40, COPTIC_PARIS);
+        
+        Date test = base.toDate(TimeZone.getDefault());
+        check(base, 2005, 1, 9, 10, 20, 30, 40);
+        
+        GregorianCalendar gcal = new GregorianCalendar();
+        gcal.clear();
+        gcal.set(Calendar.YEAR, 2005);
+        gcal.set(Calendar.MONTH, Calendar.JANUARY);
+        gcal.set(Calendar.DAY_OF_MONTH, 9);
+        gcal.set(Calendar.HOUR_OF_DAY, 10);
+        gcal.set(Calendar.MINUTE, 20);
+        gcal.set(Calendar.SECOND, 30);
+        gcal.set(Calendar.MILLISECOND, 40);
+        assertEquals(gcal.getTime(), test);
+    }
+
+    public void testToDate_springDST_Zone() {
+        LocalDateTime base = new LocalDateTime(2007, 4, 2, 0, 20, 0, 0);
+        
+        SimpleTimeZone testZone = new SimpleTimeZone(3600000, "NoMidnight",
+                Calendar.APRIL, 2, 0, 0, Calendar.OCTOBER, 2, 0, 3600000);
+        TimeZone currentZone = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(testZone);
+            Date test = base.toDate(TimeZone.getDefault());
+            check(base, 2007, 4, 2, 0, 20, 0, 0);
+            assertEquals("Mon Apr 02 01:00:00 GMT+02:00 2007", test.toString());
+        } finally {
+            TimeZone.setDefault(currentZone);
+        }
+    }
+
+    public void testToDate_springDST_2Hour40Savings_Zone() {
+        LocalDateTime base = new LocalDateTime(2007, 4, 2, 0, 20, 0, 0);
+        
+        SimpleTimeZone testZone = new SimpleTimeZone(3600000, "NoMidnight",
+                Calendar.APRIL, 2, 0, 0, Calendar.OCTOBER, 2, 0, 3600000, (3600000 / 6) * 16);
+        TimeZone currentZone = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(testZone);
+            Date test = base.toDate(TimeZone.getDefault());
+            check(base, 2007, 4, 2, 0, 20, 0, 0);
+            assertEquals("Mon Apr 02 02:40:00 GMT+03:40 2007", test.toString());
+        } finally {
+            TimeZone.setDefault(currentZone);
+        }
+    }
+
+    public void testToDate_autumnDST_Zone() {
+        LocalDateTime base = new LocalDateTime(2007, 10, 2, 0, 20, 30, 0);
+        
+        SimpleTimeZone testZone = new SimpleTimeZone(3600000, "NoMidnight",
+                Calendar.APRIL, 2, 0, 0, Calendar.OCTOBER, 2, 0, 3600000);
+        TimeZone currentZone = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(testZone);
+            Date test = base.toDate(TimeZone.getDefault());
+            check(base, 2007, 10, 2, 0, 20, 30, 0);
+            assertEquals("Tue Oct 02 00:20:30 GMT+02:00 2007", test.toString());
+        } finally {
+            TimeZone.setDefault(currentZone);
+        }
+    }
+    
+    
     //-----------------------------------------------------------------------
     public void testProperty() {
         LocalDateTime test = new LocalDateTime(2005, 6, 9, 10, 20, 30, 40, GJ_UTC);

@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Stephen Colebourne
+ *  Copyright 2001-2013 Stephen Colebourne
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ref.SoftReference;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -47,6 +48,8 @@ public class ZoneInfoProvider implements Provider {
     private final ClassLoader iLoader;
     /** Maps ids to strings or SoftReferences to DateTimeZones. */
     private final Map<String, Object> iZoneInfoMap;
+    /** Maps ids to strings or SoftReferences to DateTimeZones. */
+    private final Set<String> iZoneInfoKeys;
 
     /**
      * ZoneInfoProvider searches the given directory for compiled data files.
@@ -69,6 +72,7 @@ public class ZoneInfoProvider implements Provider {
         iLoader = null;
 
         iZoneInfoMap = loadZoneInfoMap(openResource("ZoneInfoMap"));
+        iZoneInfoKeys = Collections.unmodifiableSortedSet(new TreeSet<String>(iZoneInfoMap.keySet()));
     }
 
     /**
@@ -121,13 +125,13 @@ public class ZoneInfoProvider implements Provider {
         iLoader = loader;
 
         iZoneInfoMap = loadZoneInfoMap(openResource("ZoneInfoMap"));
+        iZoneInfoKeys = Collections.unmodifiableSortedSet(new TreeSet<String>(iZoneInfoMap.keySet()));
     }
 
     //-----------------------------------------------------------------------
     /**
-     * If an error is thrown while loading zone data, uncaughtException is
-     * called to log the error and null is returned for this and all future
-     * requests.
+     * If an error is thrown while loading zone data, the exception is logged
+     * to system error and null is returned for this and all future requests.
      * 
      * @param id  the id to load
      * @return the loaded zone
@@ -142,11 +146,6 @@ public class ZoneInfoProvider implements Provider {
             return null;
         }
 
-        if (id.equals(obj)) {
-            // Load zone data for the first time.
-            return loadZoneData(id);
-        }
-
         if (obj instanceof SoftReference<?>) {
             @SuppressWarnings("unchecked")
             SoftReference<DateTimeZone> ref = (SoftReference<DateTimeZone>) obj;
@@ -155,6 +154,9 @@ public class ZoneInfoProvider implements Provider {
                 return tz;
             }
             // Reference cleared; load data again.
+            return loadZoneData(id);
+        } else if (id.equals(obj)) {
+            // Load zone data for the first time.
             return loadZoneData(id);
         }
 
@@ -168,10 +170,7 @@ public class ZoneInfoProvider implements Provider {
      * @return the zone ids
      */
     public Set<String> getAvailableIDs() {
-        // Return a copy of the keys rather than an umodifiable collection.
-        // This prevents ConcurrentModificationExceptions from being thrown by
-        // some JVMs if zones are opened while this set is iterated over.
-        return new TreeSet<String>(iZoneInfoMap.keySet());
+        return iZoneInfoKeys;
     }
 
     /**
@@ -180,8 +179,7 @@ public class ZoneInfoProvider implements Provider {
      * @param ex  the exception
      */
     protected void uncaughtException(Exception ex) {
-        Thread t = Thread.currentThread();
-        t.getThreadGroup().uncaughtException(t, ex);
+        ex.printStackTrace();
     }
 
     /**
@@ -191,6 +189,7 @@ public class ZoneInfoProvider implements Provider {
      * @return the input stream
      * @throws IOException if an error occurs
      */
+    @SuppressWarnings("resource")
     private InputStream openResource(String name) throws IOException {
         InputStream in;
         if (iFileDir != null) {

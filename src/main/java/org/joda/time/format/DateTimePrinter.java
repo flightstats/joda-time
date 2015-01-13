@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2005 Stephen Colebourne
+ *  Copyright 2001-2014 Stephen Colebourne
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -71,7 +71,7 @@ public interface DateTimePrinter {
      * Prints an instant from milliseconds since 1970-01-01T00:00:00Z,
      * using the given Chronology.
      *
-     * @param out  formatted instant is written out
+     * @param out  formatted instant is written out, not null
      * @param instant  millis since 1970-01-01T00:00:00Z
      * @param chrono  the chronology to use, not null
      * @param displayOffset  if a time zone offset is printed, force it to use

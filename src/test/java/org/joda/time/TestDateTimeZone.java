@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2011 Stephen Colebourne
+ *  Copyright 2001-2014 Stephen Colebourne
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,8 +19,6 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.PrintStream;
-import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.security.AllPermission;
 import java.security.CodeSource;
@@ -30,6 +28,7 @@ import java.security.Permissions;
 import java.security.Policy;
 import java.security.ProtectionDomain;
 import java.text.DateFormatSymbols;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -281,12 +280,14 @@ public class TestDateTimeZone extends TestCase {
             String value = map.get(key);
             TimeZone juZone = TimeZone.getTimeZone(key);
             DateTimeZone zone = DateTimeZone.forTimeZone(juZone);
-            assertEquals(value, zone.getID());
+            assertEquals(DateTimeZone.forID(value), zone);
 //            System.out.println(juZone);
 //            System.out.println(juZone.getDisplayName());
 //            System.out.println(zone);
 //            System.out.println("------");
         }
+        // gee thanks time-zone db maintainer for damaging the database
+        // and breaking the long-standing  association with CAT/EAT
     }
 
     //-----------------------------------------------------------------------
@@ -303,9 +304,24 @@ public class TestDateTimeZone extends TestCase {
     //-----------------------------------------------------------------------
     public void testForOffsetHoursMinutes_int_int() {
         assertEquals(DateTimeZone.UTC, DateTimeZone.forOffsetHoursMinutes(0, 0));
-        assertEquals(DateTimeZone.forID("+03:15"), DateTimeZone.forOffsetHoursMinutes(3, 15));
+        assertEquals(DateTimeZone.forID("+23:59"), DateTimeZone.forOffsetHoursMinutes(23, 59));
+        
+        assertEquals(DateTimeZone.forID("+02:15"), DateTimeZone.forOffsetHoursMinutes(2, 15));
+        assertEquals(DateTimeZone.forID("+02:00"), DateTimeZone.forOffsetHoursMinutes(2, 0));
+        try {
+            DateTimeZone.forOffsetHoursMinutes(2, -15);
+            fail();
+        } catch (IllegalArgumentException ex) {}
+        
+        assertEquals(DateTimeZone.forID("+00:15"), DateTimeZone.forOffsetHoursMinutes(0, 15));
+        assertEquals(DateTimeZone.forID("+00:00"), DateTimeZone.forOffsetHoursMinutes(0, 0));
+        assertEquals(DateTimeZone.forID("-00:15"), DateTimeZone.forOffsetHoursMinutes(0, -15));
+        
         assertEquals(DateTimeZone.forID("-02:00"), DateTimeZone.forOffsetHoursMinutes(-2, 0));
-        assertEquals(DateTimeZone.forID("-02:30"), DateTimeZone.forOffsetHoursMinutes(-2, 30));
+        assertEquals(DateTimeZone.forID("-02:15"), DateTimeZone.forOffsetHoursMinutes(-2, -15));
+        assertEquals(DateTimeZone.forID("-02:15"), DateTimeZone.forOffsetHoursMinutes(-2, 15));
+        
+        assertEquals(DateTimeZone.forID("-23:59"), DateTimeZone.forOffsetHoursMinutes(-23, 59));
         try {
             DateTimeZone.forOffsetHoursMinutes(2, 60);
             fail();
@@ -315,15 +331,11 @@ public class TestDateTimeZone extends TestCase {
             fail();
         } catch (IllegalArgumentException ex) {}
         try {
-            DateTimeZone.forOffsetHoursMinutes(2, -1);
+            DateTimeZone.forOffsetHoursMinutes(24, 0);
             fail();
         } catch (IllegalArgumentException ex) {}
         try {
-            DateTimeZone.forOffsetHoursMinutes(-2, -1);
-            fail();
-        } catch (IllegalArgumentException ex) {}
-        try {
-            DateTimeZone.forOffsetHoursMinutes(999999, 0);
+            DateTimeZone.forOffsetHoursMinutes(-24, 0);
             fail();
         } catch (IllegalArgumentException ex) {}
     }        
@@ -331,8 +343,10 @@ public class TestDateTimeZone extends TestCase {
     //-----------------------------------------------------------------------
     public void testForOffsetMillis_int() {
         assertSame(DateTimeZone.UTC, DateTimeZone.forOffsetMillis(0));
+        assertEquals(DateTimeZone.forID("+23:59:59.999"), DateTimeZone.forOffsetMillis((24 * 60 * 60 * 1000) - 1));
         assertEquals(DateTimeZone.forID("+03:00"), DateTimeZone.forOffsetMillis(3 * 60 * 60 * 1000));
         assertEquals(DateTimeZone.forID("-02:00"), DateTimeZone.forOffsetMillis(-2 * 60 * 60 * 1000));
+        assertEquals(DateTimeZone.forID("-23:59:59.999"), DateTimeZone.forOffsetMillis((-24 * 60 * 60 * 1000) + 1));
         assertEquals(DateTimeZone.forID("+04:45:17.045"),
                 DateTimeZone.forOffsetMillis(
                         4 * 60 * 60 * 1000 + 45 * 60 * 1000 + 17 * 1000 + 45));
@@ -378,6 +392,41 @@ public class TestDateTimeZone extends TestCase {
         
         zone = DateTimeZone.forTimeZone(TimeZone.getTimeZone("EST"));
         assertEquals("America/New_York", zone.getID());
+    }
+
+    public void testFromTimeZoneInvalid() throws Exception {
+        TimeZone jdkZone = new TimeZone() {
+            private static final long serialVersionUID = 1L;
+            @Override
+            public String getID() {
+                return null;
+            }
+            @Override
+            public int getOffset(int era, int year, int month, int day, int dayOfWeek, int milliseconds) {
+                return 0;
+            }
+            @Override
+            public void setRawOffset(int offsetMillis) {
+            }
+            @Override
+            public int getRawOffset() {
+                return 0;
+            }
+            @Override
+            public boolean useDaylightTime() {
+                return false;
+            }
+            @Override
+            public boolean inDaylightTime(Date date) {
+                return false;
+            }
+        };
+        try {
+            DateTimeZone.forTimeZone(jdkZone);
+            fail();
+        } catch (IllegalArgumentException ex) {
+            // expected
+        }
     }
 
     public void testTimeZoneConversion() {
@@ -447,22 +496,33 @@ public class TestDateTimeZone extends TestCase {
             assertEquals(ZoneInfoProvider.class, DateTimeZone.getProvider().getClass());
         }
         
-        PrintStream syserr = System.err;
+        try {
+            System.setProperty("org.joda.time.DateTimeZone.Folder", "src/test/resources/tzdata");
+            DateTimeZone.setProvider(null);
+            assertEquals(ZoneInfoProvider.class, DateTimeZone.getProvider().getClass());
+            assertEquals(2, DateTimeZone.getAvailableIDs().size());
+            assertEquals(true, DateTimeZone.getAvailableIDs().contains("UTC"));
+            assertEquals(true, DateTimeZone.getAvailableIDs().contains("CET"));
+            
+        } finally {
+            System.getProperties().remove("org.joda.time.DateTimeZone.Folder");
+            DateTimeZone.setProvider(null);
+            assertEquals(ZoneInfoProvider.class, DateTimeZone.getProvider().getClass());
+            assertEquals(true, DateTimeZone.getAvailableIDs().size() > 2);
+        }
+    }
+
+    public void testProvider_badClassName() {
         try {
             System.setProperty("org.joda.time.DateTimeZone.Provider", "xxx");
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            System.setErr(new PrintStream(baos));
-            
             DateTimeZone.setProvider(null);
             
+        } catch (RuntimeException ex) {
+            // expected
             assertEquals(ZoneInfoProvider.class, DateTimeZone.getProvider().getClass());
-            String str = new String(baos.toByteArray());
-            assertTrue(str.indexOf("java.lang.ClassNotFoundException") >= 0);
         } finally {
-            System.setErr(syserr);
             System.getProperties().remove("org.joda.time.DateTimeZone.Provider");
             DateTimeZone.setProvider(null);
-            assertEquals(ZoneInfoProvider.class, DateTimeZone.getProvider().getClass());
         }
     }
     
@@ -560,26 +620,22 @@ public class TestDateTimeZone extends TestCase {
             DateTimeZone.setNameProvider(null);
             assertEquals(DefaultNameProvider.class, DateTimeZone.getNameProvider().getClass());
         }
-        
-        PrintStream syserr = System.err;
+    }
+
+    public void testNameProvider_badClassName() {
         try {
             System.setProperty("org.joda.time.DateTimeZone.NameProvider", "xxx");
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            System.setErr(new PrintStream(baos));
+            DateTimeZone.setProvider(null);
             
-            DateTimeZone.setNameProvider(null);
-            
+        } catch (RuntimeException ex) {
+            // expected
             assertEquals(DefaultNameProvider.class, DateTimeZone.getNameProvider().getClass());
-            String str = new String(baos.toByteArray());
-            assertTrue(str.indexOf("java.lang.ClassNotFoundException") >= 0);
         } finally {
-            System.setErr(syserr);
             System.getProperties().remove("org.joda.time.DateTimeZone.NameProvider");
-            DateTimeZone.setNameProvider(null);
-            assertEquals(DefaultNameProvider.class, DateTimeZone.getNameProvider().getClass());
+            DateTimeZone.setProvider(null);
         }
-    }        
-    
+    }
+
     public void testNameProviderSecurity() {
         if (OLD_JDK) {
             return;
@@ -995,7 +1051,7 @@ public class TestDateTimeZone extends TestCase {
         DateTimeZone result = (DateTimeZone) ois.readObject();
         ois.close();
         
-        assertSame(zone, result);
+        assertEquals(zone, result);
     }
 
     public void testCommentParse() throws Exception {

@@ -15,10 +15,13 @@
  */
 package org.joda.time.format;
 
+import java.io.IOException;
+import java.io.StringWriter;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 
+import junit.framework.AssertionFailedError;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
 
@@ -40,6 +43,8 @@ public class TestDateTimeFormatterBuilder extends TestCase {
     private static final DateTimeZone TOKYO = DateTimeZone.forID("Asia/Tokyo");
     private static final DateTimeZone NEW_YORK = DateTimeZone.forID("America/New_York");
     private static final DateTimeZone LOS_ANGELES = DateTimeZone.forID("America/Los_Angeles");
+    private static final DateTimeZone OFFSET_0200 = DateTimeZone.forID("+02:00");
+    private static final DateTimeZone OFFSET_023012 = DateTimeZone.forID("+02:30:12");
 
     public static void main(String[] args) {
         junit.textui.TestRunner.run(suite());
@@ -313,6 +318,78 @@ public class TestDateTimeFormatterBuilder extends TestCase {
     }
 
     //-----------------------------------------------------------------------
+    public void test_appendTimeZoneOffset_parse() {
+        for (int i = 1; i <= 4; i++) {
+            for (int j = i; j <= 4; j++) {
+                DateTimeFormatterBuilder bld = new DateTimeFormatterBuilder();
+                bld.appendTimeZoneOffset("Z", true, i, j);
+                DateTimeFormatter f = bld.toFormatter();
+                // parse
+                assertEquals(OFFSET_0200, f.withOffsetParsed().parseDateTime("+02").getZone());
+                assertEquals(OFFSET_0200, f.withOffsetParsed().parseDateTime("+02:00").getZone());
+                assertEquals(OFFSET_0200, f.withOffsetParsed().parseDateTime("+02:00:00").getZone());
+                assertEquals(OFFSET_0200, f.withOffsetParsed().parseDateTime("+02:00:00.000").getZone());
+            }
+        }
+    }
+
+    public void test_appendTimeZoneOffset_print_min1max1() throws IOException {
+        DateTimeFormatter f = new DateTimeFormatterBuilder().appendTimeZoneOffset("Z", true, 1, 1).toFormatter();
+        assertPrint("+02", f, new DateTime(2007, 3, 4, 0, 0, 0, OFFSET_0200));
+        assertPrint("+02", f, new DateTime(2007, 3, 4, 0, 0, 0, OFFSET_023012));
+    }
+
+    public void test_appendTimeZoneOffset_print_min1max2() throws IOException {
+        DateTimeFormatter f = new DateTimeFormatterBuilder().appendTimeZoneOffset("Z", true, 1, 2).toFormatter();
+        assertPrint("+02", f, new DateTime(2007, 3, 4, 0, 0, 0, OFFSET_0200));
+        assertPrint("+02:30", f, new DateTime(2007, 3, 4, 0, 0, 0, OFFSET_023012));
+    }
+
+    public void test_appendTimeZoneOffset_print_min1max3() throws IOException {
+        DateTimeFormatter f = new DateTimeFormatterBuilder().appendTimeZoneOffset("Z", true, 1, 3).toFormatter();
+        assertPrint("+02", f, new DateTime(2007, 3, 4, 0, 0, 0, OFFSET_0200));
+        assertPrint("+02:30:12", f, new DateTime(2007, 3, 4, 0, 0, 0, OFFSET_023012));
+    }
+
+    public void test_appendTimeZoneOffset_print_min2max2() throws IOException {
+        DateTimeFormatter f = new DateTimeFormatterBuilder().appendTimeZoneOffset("Z", true, 2, 2).toFormatter();
+        assertPrint("+02:00", f, new DateTime(2007, 3, 4, 0, 0, 0, OFFSET_0200));
+        assertPrint("+02:30", f, new DateTime(2007, 3, 4, 0, 0, 0, OFFSET_023012));
+    }
+
+    public void test_appendTimeZoneOffset_print_min2max3() throws IOException {
+        DateTimeFormatter f = new DateTimeFormatterBuilder().appendTimeZoneOffset("Z", true, 2, 3).toFormatter();
+        assertPrint("+02:00", f, new DateTime(2007, 3, 4, 0, 0, 0, OFFSET_0200));
+        assertPrint("+02:30:12", f, new DateTime(2007, 3, 4, 0, 0, 0, OFFSET_023012));
+    }
+
+    public void test_appendTimeZoneOffset_print_min3max3() throws IOException {
+        DateTimeFormatter f = new DateTimeFormatterBuilder().appendTimeZoneOffset("Z", true, 3, 3).toFormatter();
+        assertPrint("+02:00:00", f, new DateTime(2007, 3, 4, 0, 0, 0, OFFSET_0200));
+        assertPrint("+02:30:12", f, new DateTime(2007, 3, 4, 0, 0, 0, OFFSET_023012));
+    }
+
+    public void test_appendTimeZoneOffset_invalidText() {
+        DateTimeFormatterBuilder bld = new DateTimeFormatterBuilder();
+        bld.appendTimeZoneOffset("Z", true, 1, 1);
+        DateTimeFormatter f = bld.toFormatter();
+        try {
+            f.parseDateTime("Nonsense");
+            fail();
+        } catch (IllegalArgumentException e) {
+        }
+    }
+
+    public void test_appendTimeZoneOffset_zeroMinInvalid() {
+        DateTimeFormatterBuilder bld = new DateTimeFormatterBuilder();
+        try {
+            bld.appendTimeZoneOffset("Z", true, 0, 2);
+            fail();
+        } catch (IllegalArgumentException e) {
+        }
+    }
+
+    //-----------------------------------------------------------------------
     public void test_appendTimeZoneId() {
         DateTimeFormatterBuilder bld = new DateTimeFormatterBuilder();
         bld.appendTimeZoneId();
@@ -532,11 +609,15 @@ public class TestDateTimeFormatterBuilder extends TestCase {
         assertEquals("2011-01-04 12:30 PST", f.print(dt3));
         DateTime dt4 = new DateTime(2011, 7, 4, 12, 30, 0, LOS_ANGELES);
         assertEquals("2011-07-04 12:30 PDT", f.print(dt4));
+        DateTime dt5 = new DateTime(2011, 7, 4, 12, 30, 0, DateTimeZone.UTC);
+        assertEquals("2011-07-04 12:30 UTC", f.print(dt5));
         
         assertEquals(dt1.getZone() + " " + f.parseDateTime("2011-01-04 12:30 EST").getZone(), dt1, f.parseDateTime("2011-01-04 12:30 EST"));
         assertEquals(dt2, f.parseDateTime("2011-07-04 12:30 EDT"));
         assertEquals(dt3, f.parseDateTime("2011-01-04 12:30 PST"));
         assertEquals(dt4, f.parseDateTime("2011-07-04 12:30 PDT"));
+        assertEquals(dt5, f.parseDateTime("2011-07-04 12:30 UT"));
+        assertEquals(dt5, f.parseDateTime("2011-07-04 12:30 UTC"));
         try {
             f.parseDateTime("2007-03-04 12:30 PPP");
             fail();
@@ -585,6 +666,19 @@ public class TestDateTimeFormatterBuilder extends TestCase {
             fail();
         } catch (IllegalArgumentException e) {
         }
+    }
+
+    private static void assertPrint(String expected, DateTimeFormatter f, DateTime dt) {
+        assertEquals(expected, f.print(dt));
+        StringWriter out = new StringWriter();
+        try {
+            f.printTo(out, dt);
+        } catch (IOException ex) {
+            AssertionFailedError failure = new AssertionFailedError();
+            failure.initCause(ex);
+            throw failure;
+        }
+        assertEquals(expected, out.toString());
     }
 
 }

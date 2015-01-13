@@ -137,11 +137,12 @@ public final class ZonedChronology extends AssembledChronology {
     private long localToUTC(long localInstant) {
         DateTimeZone zone = getZone();
         int offset = zone.getOffsetFromLocal(localInstant);
-        localInstant -= offset;
-        if (offset != zone.getOffset(localInstant)) {
+        long utcInstant = localInstant - offset;
+        int offsetBasedOnUtc = zone.getOffset(utcInstant);
+        if (offset != offsetBasedOnUtc) {
             throw new IllegalInstantException(localInstant, zone.getID());
         }
-        return localInstant;
+        return utcInstant;
     }
 
     protected void assemble(Fields fields) {
@@ -360,6 +361,23 @@ public final class ZonedChronology extends AssembledChronology {
         private long addOffset(long instant) {
             return iZone.convertUTCToLocal(instant);
         }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            } else if (obj instanceof ZonedDurationField) {
+                ZonedDurationField other = (ZonedDurationField) obj;
+                return iField.equals(other.iField) &&
+                       iZone.equals(other.iZone);
+            }
+            return false;
+        }
+
+        @Override
+        public int hashCode() {
+            return iField.hashCode() ^ iZone.hashCode();
+        }
     }
 
     /**
@@ -369,6 +387,7 @@ public final class ZonedChronology extends AssembledChronology {
      * versa on output.
      */
     static final class ZonedDateTimeField extends BaseDateTimeField {
+        @SuppressWarnings("unused")
         private static final long serialVersionUID = -3968986277775529794L;
 
         final DateTimeField iField;
@@ -593,6 +612,25 @@ public final class ZonedChronology extends AssembledChronology {
                 throw new ArithmeticException("Adding time zone offset caused overflow");
             }
             return offset;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            } else if (obj instanceof ZonedDateTimeField) {
+                ZonedDateTimeField other = (ZonedDateTimeField) obj;
+                return iField.equals(other.iField) &&
+                       iZone.equals(other.iZone) &&
+                       iDurationField.equals(other.iDurationField) &&
+                       iRangeDurationField.equals(other.iRangeDurationField);
+            }
+            return false;
+        }
+
+        @Override
+        public int hashCode() {
+            return iField.hashCode() ^ iZone.hashCode();
         }
     }
 

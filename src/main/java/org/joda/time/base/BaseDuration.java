@@ -67,11 +67,11 @@ public abstract class BaseDuration
      *
      * @param startInstant  interval start, in milliseconds
      * @param endInstant  interval end, in milliseconds
-     * @throws ArithmeticException if the duration exceeds a 64 bit long
+     * @throws ArithmeticException if the duration exceeds a 64-bit long
      */
     protected BaseDuration(long startInstant, long endInstant) {
         super();
-        iMillis = FieldUtils.safeAdd(endInstant, -startInstant);
+        iMillis = FieldUtils.safeSubtract(endInstant, startInstant);
     }
 
     /**
@@ -79,7 +79,7 @@ public abstract class BaseDuration
      *
      * @param start  interval start, null means now
      * @param end  interval end, null means now
-     * @throws ArithmeticException if the duration exceeds a 64 bit long
+     * @throws ArithmeticException if the duration exceeds a 64-bit long
      */
     protected BaseDuration(ReadableInstant start, ReadableInstant end) {
         super();
@@ -88,7 +88,7 @@ public abstract class BaseDuration
         } else {
             long startMillis = DateTimeUtils.getInstantMillis(start);
             long endMillis = DateTimeUtils.getInstantMillis(end);
-            iMillis = FieldUtils.safeAdd(endMillis, -startMillis);
+            iMillis = FieldUtils.safeSubtract(endMillis, startMillis);
         }
     }
 

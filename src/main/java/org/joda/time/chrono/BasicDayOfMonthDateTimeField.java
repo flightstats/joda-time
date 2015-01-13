@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2005 Stephen Colebourne
+ *  Copyright 2001-2014 Stephen Colebourne
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ import org.joda.time.field.PreciseDurationDateTimeField;
  */
 final class BasicDayOfMonthDateTimeField extends PreciseDurationDateTimeField {
 
+    @SuppressWarnings("unused")
     private static final long serialVersionUID = -4677223814028011723L;
 
     private final BasicChronology iChronology;
@@ -94,6 +95,11 @@ final class BasicDayOfMonthDateTimeField extends PreciseDurationDateTimeField {
 
     protected int getMaximumValueForSet(long instant, int value) {
         return iChronology.getDaysInMonthMaxForSet(instant, value);
+    }
+
+    @Override
+    public boolean isLeap(long instant) {
+        return iChronology.isLeapDay(instant);
     }
 
     /**

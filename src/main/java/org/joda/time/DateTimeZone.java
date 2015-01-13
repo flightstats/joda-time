@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2013 Stephen Colebourne
+ *  Copyright 2001-2014 Stephen Colebourne
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -15,24 +15,24 @@
  */
 package org.joda.time;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.ObjectStreamException;
 import java.io.Serializable;
-import java.lang.ref.Reference;
-import java.lang.ref.SoftReference;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TimeZone;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.joda.convert.FromString;
 import org.joda.convert.ToString;
 import org.joda.time.chrono.BaseChronology;
 import org.joda.time.field.FieldUtils;
-import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.DateTimeFormatterBuilder;
 import org.joda.time.format.FormatUtils;
@@ -79,6 +79,19 @@ import org.joda.time.tz.ZoneInfoProvider;
  * However, the factory that accepts a TimeZone will attempt to convert from
  * the old short id to a suitable long id.
  * <p>
+ * There are four approaches to loading time-zone data, which are tried in this order:
+ * <ol>
+ * <li>load the specific {@link Provider} specified by the system property
+ *   {@code org.joda.time.DateTimeZone.Provider}.
+ * <li>load {@link ZoneInfoProvider} using the data in the filing system folder
+ *   pointed to by system property {@code org.joda.time.DateTimeZone.Folder}.
+ * <li>load {@link ZoneInfoProvider} using the data in the classpath location
+ *   {@code org/joda/time/tz/data}.
+ * <li>load {@link UTCProvider}
+ * </ol>
+ * <p>
+ * Unless you override the standard behaviour, the default if the third approach.
+ * <p>
  * DateTimeZone is thread-safe and immutable, and all subclasses must be as
  * well.
  * 
@@ -92,29 +105,28 @@ public abstract class DateTimeZone implements Serializable {
     private static final long serialVersionUID = 5546345482340108586L;
 
     /** The time zone for Universal Coordinated Time */
-    public static final DateTimeZone UTC = new FixedDateTimeZone("UTC", "UTC", 0, 0);
+    public static final DateTimeZone UTC = UTCDateTimeZone.INSTANCE;
+    /** Maximum offset. */
+    private static final int MAX_MILLIS = (86400 * 1000) - 1;
 
-    /** The instance that is providing time zones. */
-    private static Provider cProvider;
-    /** The instance that is providing time zone names. */
-    private static NameProvider cNameProvider;
-    /** The set of ID strings. */
-    private static Set<String> cAvailableIDs;
-    /** The default time zone. */
-    private static volatile DateTimeZone cDefault;
-    /** A formatter for printing and parsing zones. */
-    private static DateTimeFormatter cOffsetFormatter;
-
-    /** Cache that maps fixed offset strings to softly referenced DateTimeZones */
-    private static Map<String, SoftReference<DateTimeZone>> iFixedOffsetCache;
-
-    /** Cache of old zone IDs to new zone IDs */
-    private static Map<String, String> cZoneIdConversion;
-
-    static {
-        setProvider0(null);
-        setNameProvider0(null);
-    }
+    /**
+     * The instance that is providing time zones.
+     * This is lazily initialized to reduce risks of race conditions at startup.
+     */
+    private static final AtomicReference<Provider> cProvider =
+                    new AtomicReference<Provider>();
+    /**
+     * The instance that is providing time zone names.
+     * This is lazily initialized to reduce risks of race conditions at startup.
+     */
+    private static final AtomicReference<NameProvider> cNameProvider =
+                    new AtomicReference<NameProvider>();
+    /**
+     * The default time zone.
+     * This is lazily initialized to reduce risks of race conditions at startup.
+     */
+    private static final AtomicReference<DateTimeZone> cDefault =
+                    new AtomicReference<DateTimeZone>();
 
     //-----------------------------------------------------------------------
     /**
@@ -130,32 +142,28 @@ public abstract class DateTimeZone implements Serializable {
      * @return the default datetime zone object
      */
     public static DateTimeZone getDefault() {
-        DateTimeZone zone = cDefault;
+        DateTimeZone zone = cDefault.get();
         if (zone == null) {
-            synchronized(DateTimeZone.class) {
-                zone = cDefault;
-                if (zone == null) {
-                    DateTimeZone temp = null;
-                    try {
-                        try {
-                            String id = System.getProperty("user.timezone");
-                            if (id != null) {  // null check avoids stack overflow
-                                temp = forID(id);
-                            }
-                        } catch (RuntimeException ex) {
-                            // ignored
-                        }
-                        if (temp == null) {
-                            temp = forTimeZone(TimeZone.getDefault());
-                        }
-                    } catch (IllegalArgumentException ex) {
-                        // ignored
+            try {
+                try {
+                    String id = System.getProperty("user.timezone");
+                    if (id != null) {  // null check avoids stack overflow
+                        zone = forID(id);
                     }
-                    if (temp == null) {
-                        temp = UTC;
-                    }
-                    cDefault = zone = temp;
+                } catch (RuntimeException ex) {
+                    // ignored
                 }
+                if (zone == null) {
+                    zone = forTimeZone(TimeZone.getDefault());
+                }
+            } catch (IllegalArgumentException ex) {
+                // ignored
+            }
+            if (zone == null) {
+                zone = UTC;
+            }
+            if (!cDefault.compareAndSet(null, zone)) {
+                zone = cDefault.get();
             }
         }
         return zone;
@@ -178,9 +186,7 @@ public abstract class DateTimeZone implements Serializable {
         if (zone == null) {
             throw new IllegalArgumentException("The datetime zone must not be null");
         }
-        synchronized(DateTimeZone.class) {
-            cDefault = zone;
-        }
+        cDefault.set(zone);
     }
 
     //-----------------------------------------------------------------------
@@ -207,7 +213,7 @@ public abstract class DateTimeZone implements Serializable {
         if (id.equals("UTC")) {
             return DateTimeZone.UTC;
         }
-        DateTimeZone zone = cProvider.getZone(id);
+        DateTimeZone zone = getProvider().getZone(id);
         if (zone != null) {
             return zone;
         }
@@ -229,7 +235,7 @@ public abstract class DateTimeZone implements Serializable {
      * <p>
      * This factory is a convenient way of constructing zones with a fixed offset.
      * 
-     * @param hoursOffset  the offset in hours from UTC
+     * @param hoursOffset  the offset in hours from UTC, from -23 to +23
      * @return the DateTimeZone object for the offset
      * @throws IllegalArgumentException if the offset is too large or too small
      */
@@ -242,28 +248,52 @@ public abstract class DateTimeZone implements Serializable {
      * This method assumes 60 minutes in an hour, and standard length minutes.
      * <p>
      * This factory is a convenient way of constructing zones with a fixed offset.
-     * The minutes value is always positive and in the range 0 to 59.
-     * If constructed with the values (-2, 30), the resulting zone is '-02:30'.
+     * The hours value must be in the range -23 to +23.
+     * The minutes value must be in the range -59 to +59.
+     * The following combinations of sign for the hour and minute are possible:
+     * <pre>
+     *  Hour    Minute    Example    Result
      * 
-     * @param hoursOffset  the offset in hours from UTC
-     * @param minutesOffset  the offset in minutes from UTC, must be between 0 and 59 inclusive
+     *  +ve     +ve       (2, 15)    +02:15
+     *  +ve     zero      (2, 0)     +02:00
+     *  +ve     -ve       (2, -15)   IllegalArgumentException
+     * 
+     *  zero    +ve       (0, 15)    +00:15
+     *  zero    zero      (0, 0)     +00:00
+     *  zero    -ve       (0, -15)   -00:15
+     * 
+     *  -ve     +ve       (-2, 15)   -02:15
+     *  -ve     zero      (-2, 0)    -02:00
+     *  -ve     -ve       (-2, -15)  -02:15
+     * </pre>
+     * Note that in versions before 2.3, the minutes had to be zero or positive.
+     * 
+     * @param hoursOffset  the offset in hours from UTC, from -23 to +23
+     * @param minutesOffset  the offset in minutes from UTC, from -59 to +59
      * @return the DateTimeZone object for the offset
-     * @throws IllegalArgumentException if the offset or minute is too large or too small
+     * @throws IllegalArgumentException if any value is out of range, the minutes are negative
+     *  when the hours are positive, or the resulting offset exceeds +/- 23:59:59.000
      */
     public static DateTimeZone forOffsetHoursMinutes(int hoursOffset, int minutesOffset) throws IllegalArgumentException {
         if (hoursOffset == 0 && minutesOffset == 0) {
             return DateTimeZone.UTC;
         }
-        if (minutesOffset < 0 || minutesOffset > 59) {
+        if (hoursOffset < -23 || hoursOffset > 23) {
+            throw new IllegalArgumentException("Hours out of range: " + hoursOffset);
+        }
+        if (minutesOffset < -59 || minutesOffset > 59) {
             throw new IllegalArgumentException("Minutes out of range: " + minutesOffset);
+        }
+        if (hoursOffset > 0 && minutesOffset < 0) {
+            throw new IllegalArgumentException("Positive hours must not have negative minutes: " + minutesOffset);
         }
         int offset = 0;
         try {
-            int hoursInMinutes = FieldUtils.safeMultiply(hoursOffset, 60);
+            int hoursInMinutes = hoursOffset * 60;
             if (hoursInMinutes < 0) {
-                minutesOffset = FieldUtils.safeAdd(hoursInMinutes, -minutesOffset);
+                minutesOffset = hoursInMinutes - Math.abs(minutesOffset);
             } else {
-                minutesOffset = FieldUtils.safeAdd(hoursInMinutes, minutesOffset);
+                minutesOffset = hoursInMinutes + minutesOffset;
             }
             offset = FieldUtils.safeMultiply(minutesOffset, DateTimeConstants.MILLIS_PER_MINUTE);
         } catch (ArithmeticException ex) {
@@ -275,10 +305,13 @@ public abstract class DateTimeZone implements Serializable {
     /**
      * Gets a time zone instance for the specified offset to UTC in milliseconds.
      *
-     * @param millisOffset  the offset in millis from UTC
+     * @param millisOffset  the offset in millis from UTC, from -23:59:59.999 to +23:59:59.999
      * @return the DateTimeZone object for the offset
      */
     public static DateTimeZone forOffsetMillis(int millisOffset) {
+        if (millisOffset < -MAX_MILLIS || millisOffset > MAX_MILLIS) {
+            throw new IllegalArgumentException("Millis out of range: " + millisOffset);
+        }
         String id = printOffset(millisOffset);
         return fixedOffsetZone(id, millisOffset);
     }
@@ -303,6 +336,9 @@ public abstract class DateTimeZone implements Serializable {
             return getDefault();
         }
         final String id = zone.getID();
+        if (id == null) {
+            throw new IllegalArgumentException("The TimeZone id must not be null");
+        }
         if (id.equals("UTC")) {
             return DateTimeZone.UTC;
         }
@@ -310,11 +346,12 @@ public abstract class DateTimeZone implements Serializable {
         // Convert from old alias before consulting provider since they may differ.
         DateTimeZone dtz = null;
         String convId = getConvertedId(id);
+        Provider provider = getProvider();
         if (convId != null) {
-            dtz = cProvider.getZone(convId);
+            dtz = provider.getZone(convId);
         }
         if (dtz == null) {
-            dtz = cProvider.getZone(id);
+            dtz = provider.getZone(id);
         }
         if (dtz != null) {
             return dtz;
@@ -322,7 +359,7 @@ public abstract class DateTimeZone implements Serializable {
 
         // Support GMT+/-hh:mm formats
         if (convId == null) {
-            convId = zone.getID();
+            convId = id;
             if (convId.startsWith("GMT+") || convId.startsWith("GMT-")) {
                 convId = convId.substring(3);
                 int offset = parseOffset(convId);
@@ -345,24 +382,11 @@ public abstract class DateTimeZone implements Serializable {
      * @param offset  the offset in millis
      * @return the zone
      */
-    private static synchronized DateTimeZone fixedOffsetZone(String id, int offset) {
+    private static DateTimeZone fixedOffsetZone(String id, int offset) {
         if (offset == 0) {
             return DateTimeZone.UTC;
         }
-        if (iFixedOffsetCache == null) {
-            iFixedOffsetCache = new HashMap<String, SoftReference<DateTimeZone>>();
-        }
-        DateTimeZone zone;
-        Reference<DateTimeZone> ref = iFixedOffsetCache.get(id);
-        if (ref != null) {
-            zone = ref.get();
-            if (zone != null) {
-                return zone;
-            }
-        }
-        zone = new FixedDateTimeZone(id, null, offset, offset);
-        iFixedOffsetCache.put(id, new SoftReference<DateTimeZone>(zone));
-        return zone;
+        return new FixedDateTimeZone(id, null, offset, offset);
     }
 
     /**
@@ -371,7 +395,7 @@ public abstract class DateTimeZone implements Serializable {
      * @return an unmodifiable Set of String IDs
      */
     public static Set<String> getAvailableIDs() {
-        return cAvailableIDs;
+        return getProvider().getAvailableIDs();
     }
 
     //-----------------------------------------------------------------------
@@ -384,7 +408,14 @@ public abstract class DateTimeZone implements Serializable {
      * @return the provider
      */
     public static Provider getProvider() {
-        return cProvider;
+        Provider provider = cProvider.get();
+        if (provider == null) {
+            provider = getDefaultProvider();
+            if (!cProvider.compareAndSet(null, provider)) {
+                provider = cProvider.get();
+            }
+        }
+        return provider;
     }
 
     /**
@@ -402,23 +433,25 @@ public abstract class DateTimeZone implements Serializable {
         if (sm != null) {
             sm.checkPermission(new JodaTimePermission("DateTimeZone.setProvider"));
         }
-        setProvider0(provider);
+        if (provider == null) {
+            provider = getDefaultProvider();
+        } else {
+            validateProvider(provider);
+        }
+        cProvider.set(provider);
     }
 
     /**
      * Sets the zone provider factory without performing the security check.
      * 
      * @param provider  provider to use, or null for default
+     * @return the provider
      * @throws IllegalArgumentException if the provider is invalid
      */
-    private static void setProvider0(Provider provider) {
-        if (provider == null) {
-            provider = getDefaultProvider();
-        }
+    private static Provider validateProvider(Provider provider) {
         Set<String> ids = provider.getAvailableIDs();
         if (ids == null || ids.size() == 0) {
-            throw new IllegalArgumentException
-                ("The provider doesn't have any available ids");
+            throw new IllegalArgumentException("The provider doesn't have any available ids");
         }
         if (!ids.contains("UTC")) {
             throw new IllegalArgumentException("The provider doesn't support UTC");
@@ -426,51 +459,65 @@ public abstract class DateTimeZone implements Serializable {
         if (!UTC.equals(provider.getZone("UTC"))) {
             throw new IllegalArgumentException("Invalid UTC zone provided");
         }
-        cProvider = provider;
-        cAvailableIDs = ids;
+        return provider;
     }
 
     /**
      * Gets the default zone provider.
      * <p>
-     * Tries the system property <code>org.joda.time.DateTimeZone.Provider</code>.
-     * Then tries a <code>ZoneInfoProvider</code> using the data in <code>org/joda/time/tz/data</code>.
-     * Then uses <code>UTCProvider</code>.
+     * This tries four approaches to loading data:
+     * <ol>
+     * <li>loads the provider identifier by the system property
+     *   <code>org.joda.time.DateTimeZone.Provider</code>.
+     * <li>load <code>ZoneInfoProvider</code> using the data in the filing system folder
+     *   pointed to by system property <code>org.joda.time.DateTimeZone.Folder</code>.
+     * <li>loads <code>ZoneInfoProvider</code> using the data in the classpath location
+     *   <code>org/joda/time/tz/data</code>.
+     * <li>loads <code>UTCProvider</code>.
+     * </ol>
+     * <p>
+     * Unless you override the standard behaviour, the default if the third approach.
      * 
      * @return the default name provider
      */
     private static Provider getDefaultProvider() {
-        Provider provider = null;
-
+        // approach 1
         try {
-            String providerClass =
-                System.getProperty("org.joda.time.DateTimeZone.Provider");
+            String providerClass = System.getProperty("org.joda.time.DateTimeZone.Provider");
             if (providerClass != null) {
                 try {
-                    provider = (Provider) Class.forName(providerClass).newInstance();
+                    Provider provider = (Provider) Class.forName(providerClass).newInstance();
+                    return validateProvider(provider);
                 } catch (Exception ex) {
-                    Thread thread = Thread.currentThread();
-                    thread.getThreadGroup().uncaughtException(thread, ex);
+                    throw new RuntimeException(ex);
                 }
             }
         } catch (SecurityException ex) {
             // ignored
         }
-
-        if (provider == null) {
-            try {
-                provider = new ZoneInfoProvider("org/joda/time/tz/data");
-            } catch (Exception ex) {
-                Thread thread = Thread.currentThread();
-                thread.getThreadGroup().uncaughtException(thread, ex);
+        // approach 2
+        try {
+            String dataFolder = System.getProperty("org.joda.time.DateTimeZone.Folder");
+            if (dataFolder != null) {
+                try {
+                    Provider provider = new ZoneInfoProvider(new File(dataFolder));
+                    return validateProvider(provider);
+                } catch (Exception ex) {
+                    throw new RuntimeException(ex);
+                }
             }
+        } catch (SecurityException ex) {
+            // ignored
         }
-
-        if (provider == null) {
-            provider = new UTCProvider();
+        // approach 3
+        try {
+            Provider provider = new ZoneInfoProvider("org/joda/time/tz/data");
+            return validateProvider(provider);
+        } catch (Exception ex) {
+            ex.printStackTrace();
         }
-
-        return provider;
+        // approach 4
+        return new UTCProvider();
     }
 
     //-----------------------------------------------------------------------
@@ -483,7 +530,14 @@ public abstract class DateTimeZone implements Serializable {
      * @return the provider
      */
     public static NameProvider getNameProvider() {
-        return cNameProvider;
+        NameProvider nameProvider = cNameProvider.get();
+        if (nameProvider == null) {
+            nameProvider = getDefaultNameProvider();
+            if (!cNameProvider.compareAndSet(null, nameProvider)) {
+                nameProvider = cNameProvider.get();
+            }
+        }
+        return nameProvider;
     }
 
     /**
@@ -501,20 +555,10 @@ public abstract class DateTimeZone implements Serializable {
         if (sm != null) {
             sm.checkPermission(new JodaTimePermission("DateTimeZone.setNameProvider"));
         }
-        setNameProvider0(nameProvider);
-    }
-
-    /**
-     * Sets the name provider factory without performing the security check.
-     * 
-     * @param nameProvider  provider to use, or null for default
-     * @throws IllegalArgumentException if the provider is invalid
-     */
-    private static void setNameProvider0(NameProvider nameProvider) {
         if (nameProvider == null) {
             nameProvider = getDefaultNameProvider();
         }
-        cNameProvider = nameProvider;
+        cNameProvider.set(nameProvider);
     }
 
     /**
@@ -533,8 +577,7 @@ public abstract class DateTimeZone implements Serializable {
                 try {
                     nameProvider = (NameProvider) Class.forName(providerClass).newInstance();
                 } catch (Exception ex) {
-                    Thread thread = Thread.currentThread();
-                    thread.getThreadGroup().uncaughtException(thread, ex);
+                    throw new RuntimeException(ex);
                 }
             }
         } catch (SecurityException ex) {
@@ -555,67 +598,18 @@ public abstract class DateTimeZone implements Serializable {
      * @param id  the old style id
      * @return the new style id, null if not found
      */
-    private static synchronized String getConvertedId(String id) {
-        Map<String, String> map = cZoneIdConversion;
-        if (map == null) {
-            // Backwards compatibility with TimeZone.
-            map = new HashMap<String, String>();
-            map.put("GMT", "UTC");
-            map.put("WET", "WET");
-            map.put("CET", "CET");
-            map.put("MET", "CET");
-            map.put("ECT", "CET");
-            map.put("EET", "EET");
-            map.put("MIT", "Pacific/Apia");
-            map.put("HST", "Pacific/Honolulu");  // JDK 1.1 compatible
-            map.put("AST", "America/Anchorage");
-            map.put("PST", "America/Los_Angeles");
-            map.put("MST", "America/Denver");  // JDK 1.1 compatible
-            map.put("PNT", "America/Phoenix");
-            map.put("CST", "America/Chicago");
-            map.put("EST", "America/New_York");  // JDK 1.1 compatible
-            map.put("IET", "America/Indiana/Indianapolis");
-            map.put("PRT", "America/Puerto_Rico");
-            map.put("CNT", "America/St_Johns");
-            map.put("AGT", "America/Argentina/Buenos_Aires");
-            map.put("BET", "America/Sao_Paulo");
-            map.put("ART", "Africa/Cairo");
-            map.put("CAT", "Africa/Harare");
-            map.put("EAT", "Africa/Addis_Ababa");
-            map.put("NET", "Asia/Yerevan");
-            map.put("PLT", "Asia/Karachi");
-            map.put("IST", "Asia/Kolkata");
-            map.put("BST", "Asia/Dhaka");
-            map.put("VST", "Asia/Ho_Chi_Minh");
-            map.put("CTT", "Asia/Shanghai");
-            map.put("JST", "Asia/Tokyo");
-            map.put("ACT", "Australia/Darwin");
-            map.put("AET", "Australia/Sydney");
-            map.put("SST", "Pacific/Guadalcanal");
-            map.put("NST", "Pacific/Auckland");
-            cZoneIdConversion = map;
-        }
-        return map.get(id);
+    private static String getConvertedId(String id) {
+        return LazyInit.CONVERSION_MAP.get(id);
     }
 
+    /**
+     * Parses an offset from the string.
+     * 
+     * @param str  the string
+     * @return the offset millis
+     */
     private static int parseOffset(String str) {
-        // Can't use a real chronology if called during class
-        // initialization. Offset parser doesn't need it anyhow.
-        Chronology chrono = new BaseChronology() {
-            public DateTimeZone getZone() {
-                return null;
-            }
-            public Chronology withUTC() {
-                return this;
-            }
-            public Chronology withZone(DateTimeZone zone) {
-                return this;
-            }
-            public String toString() {
-                return getClass().getName();
-            }
-        };
-        return -(int) offsetFormatter().withChronology(chrono).parseMillis(str);
+        return -(int) LazyInit.OFFSET_FORMATTER.parseMillis(str);
     }
 
     /**
@@ -659,20 +653,6 @@ public abstract class DateTimeZone implements Serializable {
         buf.append('.');
         FormatUtils.appendPaddedInteger(buf, offset, 3);
         return buf.toString();
-    }
-
-    /**
-     * Gets a printer/parser for managing the offset id formatting.
-     * 
-     * @return the formatter
-     */
-    private static synchronized DateTimeFormatter offsetFormatter() {
-        if (cOffsetFormatter == null) {
-            cOffsetFormatter = new DateTimeFormatterBuilder()
-                .appendTimeZoneOffset(null, true, 2, 4)
-                .toFormatter();
-        }
-        return cOffsetFormatter;
     }
 
     // Instance fields and methods
@@ -748,7 +728,13 @@ public abstract class DateTimeZone implements Serializable {
         if (nameKey == null) {
             return iID;
         }
-        String name = cNameProvider.getShortName(locale, iID, nameKey);
+        String name;
+        NameProvider np = getNameProvider();
+        if (np instanceof DefaultNameProvider) {
+            name = ((DefaultNameProvider) np).getShortName(locale, iID, nameKey, isStandardOffset(instant));
+        } else {
+            name = np.getShortName(locale, iID, nameKey);
+        }
         if (name != null) {
             return name;
         }
@@ -788,7 +774,13 @@ public abstract class DateTimeZone implements Serializable {
         if (nameKey == null) {
             return iID;
         }
-        String name = cNameProvider.getName(locale, iID, nameKey);
+        String name;
+        NameProvider np = getNameProvider();
+        if (np instanceof DefaultNameProvider) {
+            name = ((DefaultNameProvider) np).getName(locale, iID, nameKey, isStandardOffset(instant));
+        } else {
+            name = np.getName(locale, iID, nameKey);
+        }
         if (name != null) {
             return name;
         }
@@ -857,22 +849,25 @@ public abstract class DateTimeZone implements Serializable {
      * offset transitions (due to DST or other historical changes), ranges of
      * local times may map to different UTC times.
      * <p>
-     * This method will return an offset suitable for calculating an instant
-     * after any DST gap. For example, consider a zone with a cutover
-     * from 01:00 to 01:59:<br />
-     * Input: 00:00  Output: 00:00<br />
-     * Input: 00:30  Output: 00:30<br />
-     * Input: 01:00  Output: 02:00<br />
-     * Input: 01:30  Output: 02:30<br />
-     * Input: 02:00  Output: 02:00<br />
-     * Input: 02:30  Output: 02:30<br />
+     * For overlaps (where the local time is ambiguous), this method returns the
+     * offset applicable before the gap. The effect of this is that any instant
+     * calculated using the offset from an overlap will be in "summer" time.
      * <p>
-     * During a DST overlap (where the local time is ambiguous) this method will return
-     * the earlier instant. The combination of these two rules is to always favour
-     * daylight (summer) time over standard (winter) time.
+     * For gaps, this method returns the offset applicable before the gap, ie "winter" offset.
+     * However, the effect of this is that any instant calculated using the offset
+     * from a gap will be after the gap, in "summer" time.
+     * <p>
+     * For example, consider a zone with a gap from 01:00 to 01:59:<br />
+     * Input: 00:00 (before gap) Output: Offset applicable before gap  DateTime: 00:00<br />
+     * Input: 00:30 (before gap) Output: Offset applicable before gap  DateTime: 00:30<br />
+     * Input: 01:00 (in gap)     Output: Offset applicable before gap  DateTime: 02:00<br />
+     * Input: 01:30 (in gap)     Output: Offset applicable before gap  DateTime: 02:30<br />
+     * Input: 02:00 (after gap)  Output: Offset applicable after gap   DateTime: 02:00<br />
+     * Input: 02:30 (after gap)  Output: Offset applicable after gap   DateTime: 02:30<br />
      * <p>
      * NOTE: Prior to v2.0, the DST overlap behaviour was not defined and varied by hemisphere.
      * Prior to v1.5, the DST gap behaviour was also not defined.
+     * In v2.4, the documentation was clarified again.
      *
      * @param instantLocal  the millisecond instant, relative to this time zone, to get the offset for
      * @return the millisecond offset to subtract from local time to get UTC time
@@ -892,7 +887,13 @@ public abstract class DateTimeZone implements Serializable {
                 // back before the transition, whereas it should be
                 // on or after the transition
                 long nextLocal = nextTransition(instantAdjusted);
+                if (nextLocal == (instantLocal - offsetLocal)) {
+                    nextLocal = Long.MAX_VALUE;
+                }
                 long nextAdjusted = nextTransition(instantLocal - offsetAdjusted);
+                if (nextAdjusted == (instantLocal - offsetAdjusted)) {
+                    nextAdjusted = Long.MAX_VALUE;
+                }
                 if (nextLocal != nextAdjusted) {
                     return offsetLocal;
                 }
@@ -1293,6 +1294,81 @@ public abstract class DateTimeZone implements Serializable {
 
         private Object readResolve() throws ObjectStreamException {
             return forID(iID);
+        }
+    }
+
+    //-------------------------------------------------------------------------
+    /**
+     * Lazy initialization to avoid a synchronization lock.
+     */
+    static final class LazyInit {
+
+        /** Cache of old zone IDs to new zone IDs */
+        static final Map<String, String> CONVERSION_MAP = buildMap();
+        /** Time zone offset formatter. */
+        static final DateTimeFormatter OFFSET_FORMATTER = buildFormatter();
+
+        private static DateTimeFormatter buildFormatter() {
+            // Can't use a real chronology if called during class
+            // initialization. Offset parser doesn't need it anyhow.
+            Chronology chrono = new BaseChronology() {
+                private static final long serialVersionUID = -3128740902654445468L;
+                public DateTimeZone getZone() {
+                    return null;
+                }
+                public Chronology withUTC() {
+                    return this;
+                }
+                public Chronology withZone(DateTimeZone zone) {
+                    return this;
+                }
+                public String toString() {
+                    return getClass().getName();
+                }
+            };
+            return new DateTimeFormatterBuilder()
+                .appendTimeZoneOffset(null, true, 2, 4)
+                .toFormatter()
+                .withChronology(chrono);
+        }
+
+        private static Map<String, String> buildMap() {
+            // Backwards compatibility with TimeZone.
+            Map<String, String> map = new HashMap<String, String>();
+            map.put("GMT", "UTC");
+            map.put("WET", "WET");
+            map.put("CET", "CET");
+            map.put("MET", "CET");
+            map.put("ECT", "CET");
+            map.put("EET", "EET");
+            map.put("MIT", "Pacific/Apia");
+            map.put("HST", "Pacific/Honolulu");  // JDK 1.1 compatible
+            map.put("AST", "America/Anchorage");
+            map.put("PST", "America/Los_Angeles");
+            map.put("MST", "America/Denver");  // JDK 1.1 compatible
+            map.put("PNT", "America/Phoenix");
+            map.put("CST", "America/Chicago");
+            map.put("EST", "America/New_York");  // JDK 1.1 compatible
+            map.put("IET", "America/Indiana/Indianapolis");
+            map.put("PRT", "America/Puerto_Rico");
+            map.put("CNT", "America/St_Johns");
+            map.put("AGT", "America/Argentina/Buenos_Aires");
+            map.put("BET", "America/Sao_Paulo");
+            map.put("ART", "Africa/Cairo");
+            map.put("CAT", "Africa/Harare");
+            map.put("EAT", "Africa/Addis_Ababa");
+            map.put("NET", "Asia/Yerevan");
+            map.put("PLT", "Asia/Karachi");
+            map.put("IST", "Asia/Kolkata");
+            map.put("BST", "Asia/Dhaka");
+            map.put("VST", "Asia/Ho_Chi_Minh");
+            map.put("CTT", "Asia/Shanghai");
+            map.put("JST", "Asia/Tokyo");
+            map.put("ACT", "Australia/Darwin");
+            map.put("AET", "Australia/Sydney");
+            map.put("SST", "Pacific/Guadalcanal");
+            map.put("NST", "Pacific/Auckland");
+            return Collections.unmodifiableMap(map);
         }
     }
 

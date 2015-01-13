@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2005 Stephen Colebourne
+ *  Copyright 2001-2013 Stephen Colebourne
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -258,7 +258,9 @@ public abstract class BaseChronology
             for (int i = 0; i < size; i++) {
                 DurationField field = period.getFieldType(i).getField(this);
                 int value = field.getDifference(endInstant, startInstant);
-                startInstant = field.add(startInstant, value);
+                if (value != 0) {
+                    startInstant = field.add(startInstant, value);
+                }
                 values[i] = value;
             }
         }

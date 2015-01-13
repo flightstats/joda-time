@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2005 Stephen Colebourne
+ *  Copyright 2001-2013 Stephen Colebourne
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -33,10 +33,12 @@ import org.joda.time.DurationField;
  */
 public class RemainderDateTimeField extends DecoratedDateTimeField {
 
+    @SuppressWarnings("unused")
     private static final long serialVersionUID = 5708241235177666790L;
 
     // Shared with DividedDateTimeField.
     final int iDivisor;
+    final DurationField iDurationField;
     final DurationField iRangeField;
 
     /**
@@ -62,7 +64,27 @@ public class RemainderDateTimeField extends DecoratedDateTimeField {
             iRangeField = new ScaledDurationField(
                 rangeField, type.getRangeDurationType(), divisor);
         }
+        iDurationField = field.getDurationField();
+        iDivisor = divisor;
+    }
 
+    /**
+     * Constructor.
+     * 
+     * @param field  the field to wrap, like "year()".
+     * @param rangeField  the range field
+     * @param type  the field type this field actually uses
+     * @param divisor  divisor, such as 100 years in a century
+     * @throws IllegalArgumentException if divisor is less than two
+     */
+    public RemainderDateTimeField(DateTimeField field, DurationField rangeField,
+                                  DateTimeFieldType type, int divisor) {
+        super(field, type);
+        if (divisor < 2) {
+            throw new IllegalArgumentException("The divisor must be at least 2");
+        }
+        iRangeField = rangeField;
+        iDurationField = field.getDurationField();
         iDivisor = divisor;
     }
 
@@ -84,8 +106,22 @@ public class RemainderDateTimeField extends DecoratedDateTimeField {
      * @param type  the field type this field actually uses
      */
     public RemainderDateTimeField(DividedDateTimeField dividedField, DateTimeFieldType type) {
+        this(dividedField, dividedField.getWrappedField().getDurationField(), type);
+    }
+
+    /**
+     * Construct a RemainderDateTimeField that compliments the given
+     * DividedDateTimeField.
+     * This constructor allows the duration field to be set.
+     *
+     * @param dividedField  complimentary divided field, like "century()".
+     * @param durationField  the duration field
+     * @param type  the field type this field actually uses
+     */
+    public RemainderDateTimeField(DividedDateTimeField dividedField, DurationField durationField, DateTimeFieldType type) {
         super(dividedField.getWrappedField(), type);
         iDivisor = dividedField.iDivisor;
+        iDurationField = durationField;
         iRangeField = dividedField.iDurationField;
     }
 
@@ -130,6 +166,11 @@ public class RemainderDateTimeField extends DecoratedDateTimeField {
         FieldUtils.verifyValueBounds(this, value, 0, iDivisor - 1);
         int divided = getDivided(getWrappedField().get(instant));
         return getWrappedField().set(instant, divided * iDivisor + value);
+    }
+
+    @Override
+    public DurationField getDurationField() {
+        return iDurationField;
     }
 
     /**

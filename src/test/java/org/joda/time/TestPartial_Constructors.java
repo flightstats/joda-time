@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2005 Stephen Colebourne
+ *  Copyright 2001-2013 Stephen Colebourne
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -35,26 +35,12 @@ public class TestPartial_Constructors extends TestCase {
     private static final Chronology ISO_UTC = ISOChronology.getInstanceUTC();
     private static final Chronology GREGORIAN_PARIS = GregorianChronology.getInstance(PARIS);
     private static final Chronology GREGORIAN_UTC = GregorianChronology.getInstanceUTC();
-    private static final int OFFSET = 1;
     
     private long TEST_TIME_NOW =
             10L * DateTimeConstants.MILLIS_PER_HOUR
             + 20L * DateTimeConstants.MILLIS_PER_MINUTE
             + 30L * DateTimeConstants.MILLIS_PER_SECOND
             + 40L;
-            
-    private long TEST_TIME1 =
-        1L * DateTimeConstants.MILLIS_PER_HOUR
-        + 2L * DateTimeConstants.MILLIS_PER_MINUTE
-        + 3L * DateTimeConstants.MILLIS_PER_SECOND
-        + 4L;
-        
-    private long TEST_TIME2 =
-        1L * DateTimeConstants.MILLIS_PER_DAY
-        + 5L * DateTimeConstants.MILLIS_PER_HOUR
-        + 6L * DateTimeConstants.MILLIS_PER_MINUTE
-        + 7L * DateTimeConstants.MILLIS_PER_SECOND
-        + 8L;
         
     private DateTimeZone zone = null;
 
@@ -206,6 +192,28 @@ public class TestPartial_Constructors extends TestCase {
     /**
      * Test constructor
      */
+    public void testConstructor_TypeArray_intArray_year_weekyear() throws Throwable {
+        DateTimeFieldType[] types = new DateTimeFieldType[] {
+            DateTimeFieldType.year(),
+            DateTimeFieldType.weekyear()
+        };
+        int[] values = new int[] {2005, 2006};
+        Partial test = new Partial(types, values);
+        assertEquals(ISO_UTC, test.getChronology());
+        assertEquals(2, test.size());
+        assertEquals(2005, test.getValue(0));
+        assertEquals(2005, test.get(DateTimeFieldType.year()));
+        assertEquals(true, test.isSupported(DateTimeFieldType.year()));
+        assertEquals(2006, test.getValue(1));
+        assertEquals(2006, test.get(DateTimeFieldType.weekyear()));
+        assertEquals(true, test.isSupported(DateTimeFieldType.weekyear()));
+        assertEquals(true, Arrays.equals(test.getFieldTypes(), types));
+        assertEquals(true, Arrays.equals(test.getValues(), values));
+    }
+
+    /**
+     * Test constructor
+     */
     public void testConstructor2_TypeArray_intArray() throws Throwable {
         DateTimeFieldType[] types = new DateTimeFieldType[0];
         int[] values = new int[0];
@@ -271,7 +279,7 @@ public class TestPartial_Constructors extends TestCase {
     /**
      * Test constructor
      */
-    public void testConstructorEx7_TypeArray_intArray() throws Throwable {
+    public void testConstructorEx7_TypeArray_intArray_inOrder() throws Throwable {
         int[] values = new int[] {1, 1, 1};
         DateTimeFieldType[] types = new DateTimeFieldType[] {
             DateTimeFieldType.dayOfMonth(), DateTimeFieldType.year(), DateTimeFieldType.monthOfYear() };
@@ -326,12 +334,30 @@ public class TestPartial_Constructors extends TestCase {
         } catch (IllegalArgumentException ex) {
             assertMessageContains(ex, "must be in order", "largest-smallest");
         }
+        
+        types = new DateTimeFieldType[] {
+            DateTimeFieldType.weekyear(), DateTimeFieldType.yearOfCentury(), DateTimeFieldType.dayOfMonth() };
+        try {
+            new Partial(types, values);
+            fail();
+        } catch (IllegalArgumentException ex) {
+            assertMessageContains(ex, "must be in order", "largest-smallest");
+        }
+        
+        types = new DateTimeFieldType[] {
+            DateTimeFieldType.weekyear(), DateTimeFieldType.year(), DateTimeFieldType.dayOfMonth() };
+        try {
+            new Partial(types, values);
+            fail();
+        } catch (IllegalArgumentException ex) {
+            assertMessageContains(ex, "must be in order", "largest-smallest");
+        }
     }
 
     /**
      * Test constructor
      */
-    public void testConstructorEx8_TypeArray_intArray() throws Throwable {
+    public void testConstructorEx8_TypeArray_intArray_duplicate() throws Throwable {
         int[] values = new int[] {1, 1, 1};
         DateTimeFieldType[] types = new DateTimeFieldType[] {
             DateTimeFieldType.era(), DateTimeFieldType.year(), DateTimeFieldType.year() };
@@ -359,6 +385,15 @@ public class TestPartial_Constructors extends TestCase {
         } catch (IllegalArgumentException ex) {
             assertMessageContains(ex, "must not", "duplicate");
         }
+        
+        types = new DateTimeFieldType[] {
+            DateTimeFieldType.dayOfMonth(), DateTimeFieldType.clockhourOfDay(), DateTimeFieldType.hourOfDay() };
+        try {
+            new Partial(types, values);
+            fail();
+        } catch (IllegalArgumentException ex) {
+            assertMessageContains(ex, "must not", "duplicate");
+        }
     }
 
     /**
@@ -372,7 +407,7 @@ public class TestPartial_Constructors extends TestCase {
             new Partial(types, values);
             fail();
         } catch (IllegalArgumentException ex) {
-            // expected
+            assertMessageContains(ex, "Value 0");
         }
     }
 
@@ -403,6 +438,7 @@ public class TestPartial_Constructors extends TestCase {
     /**
      * Test constructor
      */
+    @SuppressWarnings("deprecation")
     public void testConstructor_Partial() throws Throwable {
         YearMonthDay ymd = new YearMonthDay(2005, 6, 25, GREGORIAN_PARIS);
         Partial test = new Partial(ymd);

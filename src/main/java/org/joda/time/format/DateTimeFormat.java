@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Stephen Colebourne
+ *  Copyright 2001-2014 Stephen Colebourne
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,12 +16,11 @@
 package org.joda.time.format;
 
 import java.io.IOException;
-import java.io.Writer;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
-import java.util.HashMap;
 import java.util.Locale;
-import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 
 import org.joda.time.Chronology;
 import org.joda.time.DateTime;
@@ -79,7 +78,7 @@ import org.joda.time.ReadablePartial;
  * k       clockhour of day (1~24)      number        24
  * m       minute of hour               number        30
  * s       second of minute             number        55
- * S       fraction of second           number        978
+ * S       fraction of second           millis        978
  *
  * z       time zone                    text          Pacific Standard Time; PST
  * Z       time zone offset/id          zone          -0800; -08:00; America/Los_Angeles
@@ -94,8 +93,9 @@ import org.joda.time.ReadablePartial;
  * the full form is used; otherwise a short or abbreviated form is used if
  * available.
  * <p>
- * <strong>Number</strong>: The minimum number of digits. Shorter numbers
- * are zero-padded to this amount.
+ * <strong>Number</strong>: The minimum number of digits.
+ * Shorter numbers are zero-padded to this amount.
+ * When parsing, any number of digits are accepted.
  * <p>
  * <strong>Year</strong>: Numeric presentation for year and weekyear fields
  * are handled specially. For example, if the count of 'y' is 2, the year
@@ -103,6 +103,11 @@ import org.joda.time.ReadablePartial;
  * digits.
  * <p>
  * <strong>Month</strong>: 3 or over, use text, otherwise use number.
+ * <p>
+ * <strong>Millis</strong>: The exact number of fractional digits.
+ * If more millisecond digits are available then specified the number will be truncated,
+ * if there are fewer than specified then the number will be zero-padded to the right.
+ * When parsing, only the exact number of digits are accepted.
  * <p>
  * <strong>Zone</strong>: 'Z' outputs offset without a colon, 'ZZ' outputs
  * the offset with a colon, 'ZZZ' or more outputs the zone id.
@@ -143,10 +148,12 @@ public class DateTimeFormat {
     /** Type constant for DATETIME. */
     static final int DATETIME = 2;
 
+    /** Maximum size of the pattern cache. */
+    private static final int PATTERN_CACHE_SIZE = 500;
+    /** Maps patterns to formatters, patterns don't vary by locale. Size capped at PATTERN_CACHE_SIZE*/
+    private static final ConcurrentHashMap<String, DateTimeFormatter> cPatternCache = new ConcurrentHashMap<String, DateTimeFormatter>();
     /** Maps patterns to formatters, patterns don't vary by locale. */
-    private static final Map<String, DateTimeFormatter> cPatternedCache = new HashMap<String, DateTimeFormatter>(7);
-    /** Maps patterns to formatters, patterns don't vary by locale. */
-    private static final DateTimeFormatter[] cStyleCache = new DateTimeFormatter[25];
+    private static final AtomicReferenceArray<DateTimeFormatter> cStyleCache = new AtomicReferenceArray<DateTimeFormatter>(25);
 
     //-----------------------------------------------------------------------
     /**
@@ -214,7 +221,7 @@ public class DateTimeFormat {
             locale = Locale.getDefault();
         }
         // Not pretty, but it works.
-        return ((StyleFormatter) formatter.getPrinter()).getPattern(locale);
+        return ((StyleFormatter) formatter.getPrinter0()).getPattern(locale);
     }
 
     //-----------------------------------------------------------------------
@@ -674,15 +681,18 @@ public class DateTimeFormat {
         if (pattern == null || pattern.length() == 0) {
             throw new IllegalArgumentException("Invalid pattern specification");
         }
-        DateTimeFormatter formatter = null;
-        synchronized (cPatternedCache) {
-            formatter = cPatternedCache.get(pattern);
-            if (formatter == null) {
-                DateTimeFormatterBuilder builder = new DateTimeFormatterBuilder();
-                parsePatternTo(builder, pattern);
-                formatter = builder.toFormatter();
-
-                cPatternedCache.put(pattern, formatter);
+        DateTimeFormatter formatter = cPatternCache.get(pattern);
+        if (formatter == null) {
+            DateTimeFormatterBuilder builder = new DateTimeFormatterBuilder();
+            parsePatternTo(builder, pattern);
+            formatter = builder.toFormatter();
+            if (cPatternCache.size() < PATTERN_CACHE_SIZE) {
+                // the size check is not locked against concurrent access,
+                // but is accepted to be slightly off in contention scenarios.
+                DateTimeFormatter oldFormatter = cPatternCache.putIfAbsent(pattern, formatter);
+                if (oldFormatter != null) {
+                    formatter = oldFormatter;
+                }
             }
         }
         return formatter;
@@ -717,24 +727,37 @@ public class DateTimeFormat {
      * @return the formatter
      */
     private static DateTimeFormatter createFormatterForStyleIndex(int dateStyle, int timeStyle) {
-        int index = ((dateStyle << 2) + dateStyle) + timeStyle;
-        DateTimeFormatter f = null;
-        synchronized (cStyleCache) {
-            f = cStyleCache[index];
-            if (f == null) {
-                int type = DATETIME;
-                if (dateStyle == NONE) {
-                    type = TIME;
-                } else if (timeStyle == NONE) {
-                    type = DATE;
-                }
-                StyleFormatter llf = new StyleFormatter(
-                        dateStyle, timeStyle, type);
-                f = new DateTimeFormatter(llf, llf);
-                cStyleCache[index] = f;
+        int index = ((dateStyle << 2) + dateStyle) + timeStyle;  // (dateStyle * 5 + timeStyle);
+        // Should never happen but do a double check...
+        if (index >= cStyleCache.length()) {
+            return createDateTimeFormatter(dateStyle, timeStyle);
+        }
+        DateTimeFormatter f = cStyleCache.get(index);
+        if (f == null) {
+            f = createDateTimeFormatter(dateStyle, timeStyle);
+            if (cStyleCache.compareAndSet(index, null, f) == false) {
+                f = cStyleCache.get(index);
             }
         }
         return f;
+    }
+
+    /**
+     * Creates a formatter for the specified style.
+     * 
+     * @param dateStyle  the date style
+     * @param timeStyle  the time style
+     * @return the formatter
+     */
+    private static DateTimeFormatter createDateTimeFormatter(int dateStyle, int timeStyle){
+        int type = DATETIME;
+        if (dateStyle == NONE) {
+            type = TIME;
+        } else if (timeStyle == NONE) {
+            type = DATE;
+        }
+        StyleFormatter llf = new StyleFormatter(dateStyle, timeStyle, type);
+        return new DateTimeFormatter(llf, llf);
     }
 
     /**
@@ -762,9 +785,9 @@ public class DateTimeFormat {
 
     //-----------------------------------------------------------------------
     static class StyleFormatter
-            implements DateTimePrinter, DateTimeParser {
+            implements InternalPrinter, InternalParser {
 
-        private static final Map<String, DateTimeFormatter> cCache = new HashMap<String, DateTimeFormatter>();  // manual sync
+        private static final ConcurrentHashMap<StyleFormatterCacheKey, DateTimeFormatter> cCache = new ConcurrentHashMap<StyleFormatterCacheKey, DateTimeFormatter>();
         
         private final int iDateStyle;
         private final int iTimeStyle;
@@ -782,48 +805,35 @@ public class DateTimeFormat {
         }
 
         public void printTo(
-                StringBuffer buf, long instant, Chronology chrono,
-                int displayOffset, DateTimeZone displayZone, Locale locale) {
-            DateTimePrinter p = getFormatter(locale).getPrinter();
-            p.printTo(buf, instant, chrono, displayOffset, displayZone, locale);
-        }
-
-        public void printTo(
-                Writer out, long instant, Chronology chrono,
+                Appendable appenadble, long instant, Chronology chrono,
                 int displayOffset, DateTimeZone displayZone, Locale locale) throws IOException {
-            DateTimePrinter p = getFormatter(locale).getPrinter();
-            p.printTo(out, instant, chrono, displayOffset, displayZone, locale);
+            InternalPrinter p = getFormatter(locale).getPrinter0();
+            p.printTo(appenadble, instant, chrono, displayOffset, displayZone, locale);
         }
 
-        public void printTo(StringBuffer buf, ReadablePartial partial, Locale locale) {
-            DateTimePrinter p = getFormatter(locale).getPrinter();
-            p.printTo(buf, partial, locale);
-        }
-
-        public void printTo(Writer out, ReadablePartial partial, Locale locale) throws IOException {
-            DateTimePrinter p = getFormatter(locale).getPrinter();
-            p.printTo(out, partial, locale);
+        public void printTo(Appendable appendable, ReadablePartial partial, Locale locale) throws IOException {
+            InternalPrinter p = getFormatter(locale).getPrinter0();
+            p.printTo(appendable, partial, locale);
         }
 
         public int estimateParsedLength() {
             return 40;  // guess
         }
 
-        public int parseInto(DateTimeParserBucket bucket, String text, int position) {
-            DateTimeParser p = getFormatter(bucket.getLocale()).getParser();
+        public int parseInto(DateTimeParserBucket bucket, CharSequence text, int position) {
+            InternalParser p = getFormatter(bucket.getLocale()).getParser0();
             return p.parseInto(bucket, text, position);
         }
 
         private DateTimeFormatter getFormatter(Locale locale) {
             locale = (locale == null ? Locale.getDefault() : locale);
-            String key = Integer.toString(iType + (iDateStyle << 4) + (iTimeStyle << 8)) + locale.toString();
-            DateTimeFormatter f = null;
-            synchronized (cCache) {
-                f = cCache.get(key);
-                if (f == null) {
-                    String pattern = getPattern(locale);
-                    f = DateTimeFormat.forPattern(pattern);
-                    cCache.put(key, f);
+            StyleFormatterCacheKey key = new StyleFormatterCacheKey(iType, iDateStyle, iTimeStyle, locale);
+            DateTimeFormatter f = cCache.get(key);
+            if (f == null) {
+                f = DateTimeFormat.forPattern(getPattern(locale));
+                DateTimeFormatter oldFormatter = cCache.putIfAbsent(key, f);
+                if (oldFormatter != null) {
+                    f = oldFormatter;
                 }
             }
             return f;
@@ -849,4 +859,49 @@ public class DateTimeFormat {
         }
     }
 
+    static class StyleFormatterCacheKey {
+        private final int combinedTypeAndStyle;
+        private final Locale locale;
+
+        public StyleFormatterCacheKey(int iType, int iDateStyle,
+                int iTimeStyle, Locale locale) {
+            this.locale = locale;
+            // keeping old key generation logic of shifting type and style
+            this.combinedTypeAndStyle = iType + (iDateStyle << 4) + (iTimeStyle << 8);
+        }
+
+        @Override
+        public int hashCode() {
+            final int prime = 31;
+            int result = 1;
+            result = prime * result + combinedTypeAndStyle;
+            result = prime * result + ((locale == null) ? 0 : locale.hashCode());
+            return result;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (obj == null) {
+                return false;
+            }
+            if (!(obj instanceof StyleFormatterCacheKey)) {
+                return false;
+            }
+            StyleFormatterCacheKey other = (StyleFormatterCacheKey) obj;
+            if (combinedTypeAndStyle != other.combinedTypeAndStyle) {
+                return false;
+            }
+            if (locale == null) {
+                if (other.locale != null) {
+                    return false;
+                }
+            } else if (!locale.equals(other.locale)) {
+                return false;
+            }
+            return true;
+        }
+    }
 }

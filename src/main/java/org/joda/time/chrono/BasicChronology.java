@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2005 Stephen Colebourne
+ *  Copyright 2001-2014 Stephen Colebourne
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -185,6 +185,7 @@ abstract class BasicChronology extends AssembledChronology {
         return iMinDaysInFirstWeek;
     }
 
+    //-----------------------------------------------------------------------
     /**
      * Checks if this chronology instance equals another.
      * 
@@ -193,7 +194,15 @@ abstract class BasicChronology extends AssembledChronology {
      * @since 1.6
      */
     public boolean equals(Object obj) {
-        return super.equals(obj);
+        if (this == obj) {
+            return true;
+        }
+        if (obj != null && getClass() == obj.getClass()) {
+            BasicChronology chrono = (BasicChronology) obj;
+            return getMinimumDaysInFirstWeek() == chrono.getMinimumDaysInFirstWeek() &&
+                    getZone().equals(chrono.getZone());
+        }
+        return false;
     }
 
     /**
@@ -269,6 +278,7 @@ abstract class BasicChronology extends AssembledChronology {
             fields.yearOfEra, 99);
         fields.centuryOfEra = new DividedDateTimeField(
             field, DateTimeFieldType.centuryOfEra(), 100);
+        fields.centuries = fields.centuryOfEra.getDurationField();
         
         field = new RemainderDateTimeField(
             (DividedDateTimeField) fields.centuryOfEra);
@@ -284,15 +294,13 @@ abstract class BasicChronology extends AssembledChronology {
         fields.weekOfWeekyear = new BasicWeekOfWeekyearDateTimeField(this, fields.weeks);
         
         field = new RemainderDateTimeField(
-            fields.weekyear, DateTimeFieldType.weekyearOfCentury(), 100);
+            fields.weekyear, fields.centuries, DateTimeFieldType.weekyearOfCentury(), 100);
         fields.weekyearOfCentury = new OffsetDateTimeField(
             field, DateTimeFieldType.weekyearOfCentury(), 1);
         
         // The remaining (imprecise) durations are available from the newly
         // created datetime fields.
-
         fields.years = fields.year.getDurationField();
-        fields.centuries = fields.centuryOfEra.getDurationField();
         fields.months = fields.monthOfYear.getDurationField();
         fields.weekyears = fields.weekyear.getDurationField();
     }
@@ -624,6 +632,16 @@ abstract class BasicChronology extends AssembledChronology {
     abstract boolean isLeapYear(int year);
 
     /**
+     * Is the specified instant a leap day?
+     * 
+     * @param instant  the instant to test
+     * @return true if leap, default is false
+     */
+    boolean isLeapDay(long instant) {
+        return false;
+    }
+
+    /**
      * Gets the number of days in the specified month and year.
      * 
      * @param year  the year
@@ -744,6 +762,7 @@ abstract class BasicChronology extends AssembledChronology {
     }
 
     private static class HalfdayField extends PreciseDateTimeField {
+        @SuppressWarnings("unused")
         private static final long serialVersionUID = 581601443656929254L;
 
         HalfdayField() {

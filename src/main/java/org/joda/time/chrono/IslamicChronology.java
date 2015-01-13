@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Stephen Colebourne
+ *  Copyright 2001-2014 Stephen Colebourne
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,8 +16,7 @@
 package org.joda.time.chrono;
 
 import java.io.Serializable;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.joda.time.Chronology;
 import org.joda.time.DateTime;
@@ -139,7 +138,7 @@ public final class IslamicChronology extends BasicChronology {
     private static final long MILLIS_PER_CYCLE = ((19L * 354L + 11L * 355L) * DateTimeConstants.MILLIS_PER_DAY);
 
     /** Cache of zone to chronology arrays */
-    private static final Map<DateTimeZone, IslamicChronology[]> cCache = new HashMap<DateTimeZone, IslamicChronology[]>();
+    private static final ConcurrentHashMap<DateTimeZone, IslamicChronology[]> cCache = new ConcurrentHashMap<DateTimeZone, IslamicChronology[]>();
 
     /** Singleton instance of a UTC IslamicChronology */
     private static final IslamicChronology INSTANCE_UTC;
@@ -193,28 +192,34 @@ public final class IslamicChronology extends BasicChronology {
             zone = DateTimeZone.getDefault();
         }
         IslamicChronology chrono;
-        synchronized (cCache) {
-            IslamicChronology[] chronos = cCache.get(zone);
-            if (chronos == null) {
-                chronos = new IslamicChronology[4];
-                cCache.put(zone, chronos);
+        IslamicChronology[] chronos = cCache.get(zone);
+        if (chronos == null) {
+            chronos = new IslamicChronology[4];
+            IslamicChronology[] oldChronos = cCache.putIfAbsent(zone, chronos);
+            if (oldChronos != null) {
+                chronos = oldChronos;
             }
-            chrono = chronos[leapYears.index];
-            if (chrono == null) {
-                if (zone == DateTimeZone.UTC) {
-                    // First create without a lower limit.
-                    chrono = new IslamicChronology(null, null, leapYears);
-                    // Impose lower limit and make another IslamicChronology.
-                    DateTime lowerLimit = new DateTime(1, 1, 1, 0, 0, 0, 0, chrono);
-                    chrono = new IslamicChronology(
-                        LimitChronology.getInstance(chrono, lowerLimit, null),
-                         null, leapYears);
-                } else {
-                    chrono = getInstance(DateTimeZone.UTC, leapYears);
-                    chrono = new IslamicChronology
-                        (ZonedChronology.getInstance(chrono, zone), null, leapYears);
+        }
+        chrono = chronos[leapYears.index];
+        if (chrono == null) {
+            synchronized (chronos) {
+                chrono = chronos[leapYears.index];
+                if (chrono == null) {
+                    if (zone == DateTimeZone.UTC) {
+                        // First create without a lower limit.
+                        chrono = new IslamicChronology(null, null, leapYears);
+                        // Impose lower limit and make another IslamicChronology.
+                        DateTime lowerLimit = new DateTime(1, 1, 1, 0, 0, 0, 0, chrono);
+                        chrono = new IslamicChronology(
+                            LimitChronology.getInstance(chrono, lowerLimit, null),
+                             null, leapYears);
+                    } else {
+                        chrono = getInstance(DateTimeZone.UTC, leapYears);
+                        chrono = new IslamicChronology
+                            (ZonedChronology.getInstance(chrono, zone), null, leapYears);
+                    }
+                    chronos[leapYears.index] = chrono;
                 }
-                chronos[leapYears.index] = chrono;
             }
         }
         return chrono;
@@ -273,6 +278,26 @@ public final class IslamicChronology extends BasicChronology {
             return this;
         }
         return getInstance(zone);
+    }
+
+    //-----------------------------------------------------------------------
+    /**
+     * Checks if this chronology instance equals another.
+     * 
+     * @param obj  the object to compare to
+     * @return true if equal
+     * @since 2.3
+     */
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (obj instanceof IslamicChronology) {
+            IslamicChronology chrono = (IslamicChronology) obj;
+            return getLeapYearPatternType().index == chrono.getLeapYearPatternType().index &&
+                    super.equals(obj);
+        }
+        return false;
     }
 
     /**
@@ -538,6 +563,19 @@ public final class IslamicChronology extends BasicChronology {
                 default:
                     return this;
             }
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj instanceof LeapYearPatternType) {
+                return index == ((LeapYearPatternType) obj).index;
+            }
+            return false;
+        }
+
+        @Override
+        public int hashCode() {
+            return index;
         }
     }
 }

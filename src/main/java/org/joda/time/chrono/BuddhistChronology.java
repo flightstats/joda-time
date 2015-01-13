@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Stephen Colebourne
+ *  Copyright 2001-2014 Stephen Colebourne
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -15,8 +15,7 @@
  */
 package org.joda.time.chrono;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.joda.time.Chronology;
 import org.joda.time.DateTime;
@@ -24,11 +23,13 @@ import org.joda.time.DateTimeConstants;
 import org.joda.time.DateTimeField;
 import org.joda.time.DateTimeFieldType;
 import org.joda.time.DateTimeZone;
+import org.joda.time.DurationFieldType;
 import org.joda.time.field.DelegatedDateTimeField;
 import org.joda.time.field.DividedDateTimeField;
 import org.joda.time.field.OffsetDateTimeField;
 import org.joda.time.field.RemainderDateTimeField;
 import org.joda.time.field.SkipUndoDateTimeField;
+import org.joda.time.field.UnsupportedDurationField;
 
 /**
  * A chronology that matches the BuddhistCalendar class supplied by Sun.
@@ -68,7 +69,7 @@ public final class BuddhistChronology extends AssembledChronology {
     private static final int BUDDHIST_OFFSET = 543;
 
     /** Cache of zone to chronology */
-    private static final Map<DateTimeZone, BuddhistChronology> cCache = new HashMap<DateTimeZone, BuddhistChronology>();
+    private static final ConcurrentHashMap<DateTimeZone, BuddhistChronology> cCache = new ConcurrentHashMap<DateTimeZone, BuddhistChronology>();
 
     /** UTC instance of the chronology */
     private static final BuddhistChronology INSTANCE_UTC = getInstance(DateTimeZone.UTC);
@@ -100,7 +101,7 @@ public final class BuddhistChronology extends AssembledChronology {
      *
      * @param zone  the time zone to use, null is default
      */
-    public static synchronized BuddhistChronology getInstance(DateTimeZone zone) {
+    public static BuddhistChronology getInstance(DateTimeZone zone) {
         if (zone == null) {
             zone = DateTimeZone.getDefault();
         }
@@ -111,7 +112,10 @@ public final class BuddhistChronology extends AssembledChronology {
             // Impose lower limit and make another BuddhistChronology.
             DateTime lowerLimit = new DateTime(1, 1, 1, 0, 0, 0, 0, chrono);
             chrono = new BuddhistChronology(LimitChronology.getInstance(chrono, lowerLimit, null), "");
-            cCache.put(zone, chrono);
+            BuddhistChronology oldChrono = cCache.putIfAbsent(zone, chrono);
+            if (oldChrono != null) {
+                chrono = oldChrono;
+            }
         }
         return chrono;
     }
@@ -163,6 +167,7 @@ public final class BuddhistChronology extends AssembledChronology {
         return getInstance(zone);
     }
 
+    //-----------------------------------------------------------------------
     /**
      * Checks if this chronology instance equals another.
      * 
@@ -171,7 +176,14 @@ public final class BuddhistChronology extends AssembledChronology {
      * @since 1.6
      */
     public boolean equals(Object obj) {
-        return super.equals(obj);
+        if (this == obj) {
+            return true;
+        }
+        if (obj instanceof BuddhistChronology) {
+            BuddhistChronology chrono = (BuddhistChronology) obj;
+            return getZone().equals(chrono.getZone());
+        }
+        return false;
     }
 
     /**
@@ -202,6 +214,9 @@ public final class BuddhistChronology extends AssembledChronology {
 
     protected void assemble(Fields fields) {
         if (getParam() == null) {
+            // force init as used below
+            fields.eras = UnsupportedDurationField.getInstance(DurationFieldType.eras());
+            
             // julian chrono removed zero, but we need to put it back
             DateTimeField field = fields.year;
             fields.year = new OffsetDateTimeField(
@@ -210,7 +225,7 @@ public final class BuddhistChronology extends AssembledChronology {
             // one era, so yearOfEra is the same
             field = fields.yearOfEra;
             fields.yearOfEra = new DelegatedDateTimeField(
-                fields.year, DateTimeFieldType.yearOfEra());
+                fields.year, fields.eras, DateTimeFieldType.yearOfEra());
             
             // julian chrono removed zero, but we need to put it back
             field = fields.weekyear;
@@ -219,7 +234,8 @@ public final class BuddhistChronology extends AssembledChronology {
             
             field = new OffsetDateTimeField(fields.yearOfEra, 99);
             fields.centuryOfEra = new DividedDateTimeField(
-                field, DateTimeFieldType.centuryOfEra(), 100);
+                field, fields.eras, DateTimeFieldType.centuryOfEra(), 100);
+            fields.centuries = fields.centuryOfEra.getDurationField();
             
             field = new RemainderDateTimeField(
                 (DividedDateTimeField) fields.centuryOfEra);
@@ -227,7 +243,7 @@ public final class BuddhistChronology extends AssembledChronology {
                 field, DateTimeFieldType.yearOfCentury(), 1);
             
             field = new RemainderDateTimeField(
-                fields.weekyear, DateTimeFieldType.weekyearOfCentury(), 100);
+                fields.weekyear, fields.centuries, DateTimeFieldType.weekyearOfCentury(), 100);
             fields.weekyearOfCentury = new OffsetDateTimeField(
                 field, DateTimeFieldType.weekyearOfCentury(), 1);
             

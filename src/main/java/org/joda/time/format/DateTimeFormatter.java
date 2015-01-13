@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2011 Stephen Colebourne
+ *  Copyright 2001-2014 Stephen Colebourne
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -54,8 +54,8 @@ import org.joda.time.ReadablePartial;
  * <li>{@link #withZone(DateTimeZone)} - returns a new formatter that uses the specified time zone</li>
  * <li>{@link #withChronology(Chronology)} - returns a new formatter that uses the specified chronology</li>
  * <li>{@link #withOffsetParsed()} - returns a new formatter that returns the parsed time zone offset</li>
- * <li>{@link #withPivotYear()} - returns a new formatter with the specified pivot year</li>
- * <li>{@link #withDefaultYear()} - returns a new formatter with the specified default year</li>
+ * <li>{@link #withPivotYear(int)} - returns a new formatter with the specified pivot year</li>
+ * <li>{@link #withDefaultYear(int)} - returns a new formatter with the specified default year</li>
  * </ul>
  * Each of these returns a new formatter (instances of this class are immutable).
  * <p>
@@ -72,6 +72,15 @@ import org.joda.time.ReadablePartial;
  * // parse using the Paris zone
  * DateTime date = formatter.withZone(DateTimeZone.forID("Europe/Paris")).parseDateTime(str);
  * </pre>
+ * <p>
+ * Parsing builds up the resultant instant by 'setting' the value of each parsed field
+ * from largest to smallest onto an initial instant, typically 1970-01-01T00:00Z.
+ * This design means that day-of-month is set before day-of-week.
+ * As such, if both the day-of-month and day-of-week are parsed, and the day-of-week
+ * is incorrect, then the day-of-week overrides the day-of-month.
+ * 
+ * This has a side effect if the input is not consistent.
+ * 
  * 
  * @author Brian S O'Neill
  * @author Stephen Colebourne
@@ -81,9 +90,9 @@ import org.joda.time.ReadablePartial;
 public class DateTimeFormatter {
 
     /** The internal printer used to output the datetime. */
-    private final DateTimePrinter iPrinter;
+    private final InternalPrinter iPrinter;
     /** The internal parser used to output the datetime. */
-    private final DateTimeParser iParser;
+    private final InternalParser iParser;
     /** The locale to use for printing and parsing. */
     private final Locale iLocale;
     /** Whether the offset is parsed. */
@@ -106,6 +115,18 @@ public class DateTimeFormatter {
      */
     public DateTimeFormatter(
             DateTimePrinter printer, DateTimeParser parser) {
+        this(DateTimePrinterInternalPrinter.of(printer), DateTimeParserInternalParser.of(parser));
+    }
+
+    /**
+     * Creates a new formatter, however you will normally use the factory
+     * or the builder.
+     * 
+     * @param printer  the internal printer, null if cannot print
+     * @param parser  the internal parser, null if cannot parse
+     */
+    DateTimeFormatter(
+            InternalPrinter printer, InternalParser parser) {
         super();
         iPrinter = printer;
         iParser = parser;
@@ -121,7 +142,7 @@ public class DateTimeFormatter {
      * Constructor.
      */
     private DateTimeFormatter(
-            DateTimePrinter printer, DateTimeParser parser,
+            InternalPrinter printer, InternalParser parser,
             Locale locale, boolean offsetParsed,
             Chronology chrono, DateTimeZone zone,
             Integer pivotYear, int defaultYear) {
@@ -152,6 +173,15 @@ public class DateTimeFormatter {
      * @return the internal printer; is null if printing not supported
      */
     public DateTimePrinter getPrinter() {
+        return InternalPrinterDateTimePrinter.of(iPrinter);
+    }
+
+    /**
+     * Gets the internal printer object that performs the real printing work.
+     * 
+     * @return the internal printer; is null if printing not supported
+     */
+    InternalPrinter getPrinter0() {
         return iPrinter;
     }
 
@@ -170,6 +200,10 @@ public class DateTimeFormatter {
      * @return the internal parser; is null if parsing not supported
      */
     public DateTimeParser getParser() {
+        return InternalParserDateTimeParser.of(iParser);
+    }
+
+    InternalParser getParser0() {
         return iParser;
     }
 
@@ -241,7 +275,7 @@ public class DateTimeFormatter {
      * Returns a new formatter that will use the specified chronology in
      * preference to that of the printed object, or ISO on a parse.
      * <p>
-     * When printing, this chronolgy will be used in preference to the chronology
+     * When printing, this chronology will be used in preference to the chronology
      * from the datetime that would otherwise be used.
      * <p>
      * When parsing, this chronology will be set on the parsed datetime.
@@ -457,9 +491,11 @@ public class DateTimeFormatter {
      * @param instant  instant to format, null means now
      */
     public void printTo(StringBuffer buf, ReadableInstant instant) {
-        long millis = DateTimeUtils.getInstantMillis(instant);
-        Chronology chrono = DateTimeUtils.getInstantChronology(instant);
-        printTo(buf, millis, chrono);
+        try {
+            printTo((Appendable) buf, instant);
+        } catch (IOException ex) {
+            // StringBuffer does not throw IOException
+        }
     }
 
     /**
@@ -469,9 +505,7 @@ public class DateTimeFormatter {
      * @param instant  instant to format, null means now
      */
     public void printTo(Writer out, ReadableInstant instant) throws IOException {
-        long millis = DateTimeUtils.getInstantMillis(instant);
-        Chronology chrono = DateTimeUtils.getInstantChronology(instant);
-        printTo(out, millis, chrono);
+        printTo((Appendable) out, instant);
     }
 
     /**
@@ -482,7 +516,9 @@ public class DateTimeFormatter {
      * @since 2.0
      */
     public void printTo(Appendable appendable, ReadableInstant instant) throws IOException {
-        appendable.append(print(instant));
+        long millis = DateTimeUtils.getInstantMillis(instant);
+        Chronology chrono = DateTimeUtils.getInstantChronology(instant);
+        printTo(appendable, millis, chrono);
     }
 
     //-----------------------------------------------------------------------
@@ -494,7 +530,11 @@ public class DateTimeFormatter {
      * @param instant  millis since 1970-01-01T00:00:00Z
      */
     public void printTo(StringBuffer buf, long instant) {
-        printTo(buf, instant, null);
+        try {
+            printTo((Appendable) buf, instant);
+        } catch (IOException ex) {
+            // StringBuffer does not throw IOException
+        }
     }
 
     /**
@@ -505,7 +545,7 @@ public class DateTimeFormatter {
      * @param instant  millis since 1970-01-01T00:00:00Z
      */
     public void printTo(Writer out, long instant) throws IOException {
-        printTo(out, instant, null);
+        printTo((Appendable) out, instant);
     }
 
     /**
@@ -517,7 +557,7 @@ public class DateTimeFormatter {
      * @since 2.0
      */
     public void printTo(Appendable appendable, long instant) throws IOException {
-        appendable.append(print(instant));
+        printTo(appendable, instant, null);
     }
 
     //-----------------------------------------------------------------------
@@ -531,11 +571,11 @@ public class DateTimeFormatter {
      * @param partial  partial to format
      */
     public void printTo(StringBuffer buf, ReadablePartial partial) {
-        DateTimePrinter printer = requirePrinter();
-        if (partial == null) {
-            throw new IllegalArgumentException("The partial must not be null");
+        try {
+            printTo((Appendable) buf, partial);
+        } catch (IOException ex) {
+            // StringBuffer does not throw IOException
         }
-        printer.printTo(buf, partial, iLocale);
     }
 
     /**
@@ -548,11 +588,7 @@ public class DateTimeFormatter {
      * @param partial  partial to format
      */
     public void printTo(Writer out, ReadablePartial partial) throws IOException {
-        DateTimePrinter printer = requirePrinter();
-        if (partial == null) {
-            throw new IllegalArgumentException("The partial must not be null");
-        }
-        printer.printTo(out, partial, iLocale);
+        printTo((Appendable) out, partial);
     }
 
     /**
@@ -566,37 +602,49 @@ public class DateTimeFormatter {
      * @since 2.0
      */
     public void printTo(Appendable appendable, ReadablePartial partial) throws IOException {
-        appendable.append(print(partial));
+        InternalPrinter printer = requirePrinter();
+        if (partial == null) {
+            throw new IllegalArgumentException("The partial must not be null");
+        }
+        printer.printTo(appendable, partial, iLocale);
     }
 
     //-----------------------------------------------------------------------
     /**
      * Prints a ReadableInstant to a String.
      * <p>
-     * This method will use the override zone and the override chronololgy if
+     * This method will use the override zone and the override chronology if
      * they are set. Otherwise it will use the chronology and zone of the instant.
      *
      * @param instant  instant to format, null means now
      * @return the printed result
      */
     public String print(ReadableInstant instant) {
-        StringBuffer buf = new StringBuffer(requirePrinter().estimatePrintedLength());
-        printTo(buf, instant);
+        StringBuilder buf = new StringBuilder(requirePrinter().estimatePrintedLength());
+        try {
+            printTo((Appendable) buf, instant);
+        } catch (IOException ex) {
+            // StringBuilder does not throw IOException
+        }
         return buf.toString();
     }
 
     /**
      * Prints a millisecond instant to a String.
      * <p>
-     * This method will use the override zone and the override chronololgy if
+     * This method will use the override zone and the override chronology if
      * they are set. Otherwise it will use the ISO chronology and default zone.
      *
      * @param instant  millis since 1970-01-01T00:00:00Z
      * @return the printed result
      */
     public String print(long instant) {
-        StringBuffer buf = new StringBuffer(requirePrinter().estimatePrintedLength());
-        printTo(buf, instant);
+        StringBuilder buf = new StringBuilder(requirePrinter().estimatePrintedLength());
+        try {
+            printTo((Appendable) buf, instant);
+        } catch (IOException ex) {
+            // StringBuilder does not throw IOException
+        }
         return buf.toString();
     }
 
@@ -610,13 +658,17 @@ public class DateTimeFormatter {
      * @return the printed result
      */
     public String print(ReadablePartial partial) {
-        StringBuffer buf = new StringBuffer(requirePrinter().estimatePrintedLength());
-        printTo(buf, partial);
+        StringBuilder buf = new StringBuilder(requirePrinter().estimatePrintedLength());
+        try {
+            printTo((Appendable) buf, partial);
+        } catch (IOException ex) {
+            // StringBuilder does not throw IOException
+        }
         return buf.toString();
     }
 
-    private void printTo(StringBuffer buf, long instant, Chronology chrono) {
-        DateTimePrinter printer = requirePrinter();
+    private void printTo(Appendable appendable, long instant, Chronology chrono) throws IOException {
+        InternalPrinter printer = requirePrinter();
         chrono = selectChronology(chrono);
         // Shift instant into local time (UTC) to avoid excessive offset
         // calculations when printing multiple fields in a composite printer.
@@ -629,24 +681,7 @@ public class DateTimeFormatter {
             offset = 0;
             adjustedInstant = instant;
         }
-        printer.printTo(buf, adjustedInstant, chrono.withUTC(), offset, zone, iLocale);
-    }
-
-    private void printTo(Writer buf, long instant, Chronology chrono) throws IOException {
-        DateTimePrinter printer = requirePrinter();
-        chrono = selectChronology(chrono);
-        // Shift instant into local time (UTC) to avoid excessive offset
-        // calculations when printing multiple fields in a composite printer.
-        DateTimeZone zone = chrono.getZone();
-        int offset = zone.getOffset(instant);
-        long adjustedInstant = instant + offset;
-        if ((instant ^ adjustedInstant) < 0 && (instant ^ offset) >= 0) {
-            // Time zone offset overflow, so revert to UTC.
-            zone = DateTimeZone.UTC;
-            offset = 0;
-            adjustedInstant = instant;
-        }
-        printer.printTo(buf, adjustedInstant, chrono.withUTC(), offset, zone, iLocale);
+        printer.printTo(appendable, adjustedInstant, chrono.withUTC(), offset, zone, iLocale);
     }
 
     /**
@@ -654,8 +689,8 @@ public class DateTimeFormatter {
      * 
      * @throws UnsupportedOperationException if printing is not supported
      */
-    private DateTimePrinter requirePrinter() {
-        DateTimePrinter printer = iPrinter;
+    private InternalPrinter requirePrinter() {
+        InternalPrinter printer = iPrinter;
         if (printer == null) {
             throw new UnsupportedOperationException("Printing not supported");
         }
@@ -682,7 +717,8 @@ public class DateTimeFormatter {
      * one's complement operator (~) on the return value.
      * <p>
      * This parse method ignores the {@link #getDefaultYear() default year} and
-     * parses using the year from the supplied instant as the default.
+     * parses using the year from the supplied instant based on the chronology
+     * and time-zone of the supplied instant.
      * <p>
      * The parse will use the chronology of the instant.
      *
@@ -696,18 +732,19 @@ public class DateTimeFormatter {
      * @throws IllegalArgumentException if any field is out of range
      */
     public int parseInto(ReadWritableInstant instant, String text, int position) {
-        DateTimeParser parser = requireParser();
+        InternalParser parser = requireParser();
         if (instant == null) {
             throw new IllegalArgumentException("Instant must not be null");
         }
         
         long instantMillis = instant.getMillis();
         Chronology chrono = instant.getChronology();
+        int defaultYear = DateTimeUtils.getChronology(chrono).year().get(instantMillis);
         long instantLocal = instantMillis + chrono.getZone().getOffset(instantMillis);
         chrono = selectChronology(chrono);
         
         DateTimeParserBucket bucket = new DateTimeParserBucket(
-            instantLocal, chrono, iLocale, iPivotYear, chrono.year().get(instantLocal));
+            instantLocal, chrono, iLocale, iPivotYear, defaultYear);
         int newPos = parser.parseInto(bucket, text, position);
         instant.setMillis(bucket.computeMillis(false, text));
         if (iOffsetParsed && bucket.getOffsetInteger() != null) {
@@ -731,25 +768,16 @@ public class DateTimeFormatter {
      * The parse will use the ISO chronology, and the default time zone.
      * If the text contains a time zone string then that will be taken into account.
      *
-     * @param text  text to parse
+     * @param text  the text to parse, not null
      * @return parsed value expressed in milliseconds since the epoch
      * @throws UnsupportedOperationException if parsing is not supported
      * @throws IllegalArgumentException if the text to parse is invalid
      */
     public long parseMillis(String text) {
-        DateTimeParser parser = requireParser();
-        
+        InternalParser parser = requireParser();
         Chronology chrono = selectChronology(iChrono);
         DateTimeParserBucket bucket = new DateTimeParserBucket(0, chrono, iLocale, iPivotYear, iDefaultYear);
-        int newPos = parser.parseInto(bucket, text, 0);
-        if (newPos >= 0) {
-            if (newPos >= text.length()) {
-                return bucket.computeMillis(true, text);
-            }
-        } else {
-            newPos = ~newPos;
-        }
-        throw new IllegalArgumentException(FormatUtils.createErrorMessage(text, newPos));
+        return bucket.doParseMillis(parser, text);
     }
 
     /**
@@ -771,7 +799,7 @@ public class DateTimeFormatter {
     }
 
     /**
-     * Parses only the local time from the given text, returning a new LocalDate.
+     * Parses only the local time from the given text, returning a new LocalTime.
      * <p>
      * This will parse the text fully according to the formatter, using the UTC zone.
      * Once parsed, only the local time will be used.
@@ -789,7 +817,7 @@ public class DateTimeFormatter {
     }
 
     /**
-     * Parses only the local date-time from the given text, returning a new LocalDate.
+     * Parses only the local date-time from the given text, returning a new LocalDateTime.
      * <p>
      * This will parse the text fully according to the formatter, using the UTC zone.
      * Once parsed, only the local date-time will be used.
@@ -803,7 +831,7 @@ public class DateTimeFormatter {
      * @since 2.0
      */
     public LocalDateTime parseLocalDateTime(String text) {
-        DateTimeParser parser = requireParser();
+        InternalParser parser = requireParser();
         
         Chronology chrono = selectChronology(null).withUTC();  // always use UTC, avoiding DST gaps
         DateTimeParserBucket bucket = new DateTimeParserBucket(0, chrono, iLocale, iPivotYear, iDefaultYear);
@@ -844,7 +872,7 @@ public class DateTimeFormatter {
      * @throws IllegalArgumentException if the text to parse is invalid
      */
     public DateTime parseDateTime(String text) {
-        DateTimeParser parser = requireParser();
+        InternalParser parser = requireParser();
         
         Chronology chrono = selectChronology(null);
         DateTimeParserBucket bucket = new DateTimeParserBucket(0, chrono, iLocale, iPivotYear, iDefaultYear);
@@ -889,7 +917,7 @@ public class DateTimeFormatter {
      * @throws IllegalArgumentException if the text to parse is invalid
      */
     public MutableDateTime parseMutableDateTime(String text) {
-        DateTimeParser parser = requireParser();
+        InternalParser parser = requireParser();
         
         Chronology chrono = selectChronology(null);
         DateTimeParserBucket bucket = new DateTimeParserBucket(0, chrono, iLocale, iPivotYear, iDefaultYear);
@@ -921,8 +949,8 @@ public class DateTimeFormatter {
      * 
      * @throws UnsupportedOperationException if parsing is not supported
      */
-    private DateTimeParser requireParser() {
-        DateTimeParser parser = iParser;
+    private InternalParser requireParser() {
+        InternalParser parser = iParser;
         if (parser == null) {
             throw new UnsupportedOperationException("Parsing not supported");
         }
