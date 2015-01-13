@@ -19,13 +19,19 @@ Flightstats Build Instructions
   - repeat with the sources and javadoc jars
 - Email engineering with the updated version and a summary of which regions were affected and when the change will be important
 
+Updating code to match Joda
+- Make a new local branch from your current branch, if necessary
+- git remote add realjoda https://github.com/JodaOrg/joda-time.git
+- git pull realjoda <branch in real joda>
+- resolve conflicts!
+
+### Back to your regular documentation
+
 Joda-Time provides a quality replacement for the Java date and time classes.
 The design allows for multiple calendar systems, while still providing a simple API.
 The 'default' calendar is the ISO8601 standard which is used by XML.
 The Gregorian, Julian, Buddhist, Coptic, Ethiopic and Islamic systems are also included, and we welcome further additions.
 Supporting classes include time zone, duration, format and parsing. 
-
-### Back to your regular documentation
 
 As a flavour of Joda-Time, here's some example code:
 
