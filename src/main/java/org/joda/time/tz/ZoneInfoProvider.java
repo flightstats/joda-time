@@ -21,6 +21,8 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ref.SoftReference;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
@@ -195,12 +197,16 @@ public class ZoneInfoProvider implements Provider {
         if (iFileDir != null) {
             in = new FileInputStream(new File(iFileDir, name));
         } else {
-            String path = iResourcePath.concat(name);
-            if (iLoader != null) {
-                in = iLoader.getResourceAsStream(path);
-            } else {
-                in = ClassLoader.getSystemResourceAsStream(path);
-            }
+            final String path = iResourcePath.concat(name);
+            in = AccessController.doPrivileged(new PrivilegedAction<InputStream>() {
+                public InputStream run() {
+                    if (iLoader != null) {
+                        return iLoader.getResourceAsStream(path);
+                    } else {
+                        return ClassLoader.getSystemResourceAsStream(path);
+                    }
+                }
+            });
             if (in == null) {
                 StringBuilder buf = new StringBuilder(40)
                     .append("Resource not found: \"")

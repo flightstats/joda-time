@@ -364,10 +364,8 @@ public class ZoneInfoCompiler {
         }
 
         if (outputDir != null) {
-            if (!outputDir.exists()) {
-                if (!outputDir.mkdirs()) {
-                    throw new IOException("Destination directory doesn't exist and cannot be created: " + outputDir);
-                }
+            if (!outputDir.exists() && !outputDir.mkdirs()) {
+                throw new IOException("Destination directory doesn't exist and cannot be created: " + outputDir);
             }
             if (!outputDir.isDirectory()) {
                 throw new IOException("Destination is not a directory: " + outputDir);
@@ -528,6 +526,9 @@ public class ZoneInfoCompiler {
                         rs.addRule(r);
                     }
                 } else if (token.equalsIgnoreCase("Zone")) {
+                    if (st.countTokens() < 4) {
+                        throw new IllegalArgumentException("Attempting to create a Zone from an incomplete tokenizer");
+                    }
                     zone = new Zone(st);
                 } else if (token.equalsIgnoreCase("Link")) {
                     String real = st.nextToken();
@@ -694,6 +695,9 @@ public class ZoneInfoCompiler {
         public final String iLetterS;
 
         Rule(StringTokenizer st) {
+            if (st.countTokens() < 6) {
+                throw new IllegalArgumentException("Attempting to create a Rule from an incomplete tokenizer");
+            }
             iName = st.nextToken().intern();
             iFromYear = parseYear(st.nextToken(), 0);
             iToYear = parseYear(st.nextToken(), iFromYear);

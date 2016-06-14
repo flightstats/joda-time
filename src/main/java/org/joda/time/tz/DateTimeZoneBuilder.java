@@ -360,11 +360,9 @@ public class DateTimeZoneBuilder {
             rs = new RuleSet(rs);
 
             while ((next = rs.nextTransition(millis, saveMillis)) != null) {
-                if (addTransition(transitions, next)) {
-                    if (tailZone != null) {
-                        // Got the extra transition before DSTZone.
-                        break;
-                    }
+                if (addTransition(transitions, next) && tailZone != null) {
+                    // Got the extra transition before DSTZone.
+                    break;
                 }
                 millis = next.getMillis();
                 saveMillis = next.getSaveMillis();
@@ -443,7 +441,9 @@ public class DateTimeZoneBuilder {
         if (out instanceof DataOutput) {
             writeTo(zoneID, (DataOutput)out);
         } else {
-            writeTo(zoneID, (DataOutput)new DataOutputStream(out));
+            DataOutputStream dout = new DataOutputStream(out);
+            writeTo(zoneID, (DataOutput)dout);
+            dout.flush();
         }
     }
 

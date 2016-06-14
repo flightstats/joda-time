@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2006 Stephen Colebourne
+ *  Copyright 2001-2015 Stephen Colebourne
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -39,6 +39,7 @@ public class TestInterval_Constructors extends TestCase {
 
     private static final DateTimeZone PARIS = DateTimeZone.forID("Europe/Paris");
     private static final DateTimeZone LONDON = DateTimeZone.forID("Europe/London");
+    private static final DateTimeZone OFFSET_04_00 = DateTimeZone.forOffsetHours(4);
     
     long y2002days = 365 + 365 + 366 + 365 + 365 + 365 + 366 + 365 + 365 + 365 + 
                      366 + 365 + 365 + 365 + 366 + 365 + 365 + 365 + 366 + 365 + 
@@ -102,12 +103,51 @@ public class TestInterval_Constructors extends TestCase {
     }
 
     //-----------------------------------------------------------------------
-    public void testParse_noFormatter() throws Throwable {
+    public void testParse_noOffsetInString() throws Throwable {
         DateTime start = new DateTime(2010, 6, 30, 12, 30, ISOChronology.getInstance(PARIS));
         DateTime end = new DateTime(2010, 7, 1, 14, 30, ISOChronology.getInstance(PARIS));
         assertEquals(new Interval(start, end), Interval.parse("2010-06-30T12:30/2010-07-01T14:30"));
         assertEquals(new Interval(start, end), Interval.parse("2010-06-30T12:30/P1DT2H"));
         assertEquals(new Interval(start, end), Interval.parse("P1DT2H/2010-07-01T14:30"));
+    }
+
+    public void testParse_offsetInString() throws Throwable {
+        DateTime start = new DateTime(2010, 6, 30, 10, 30, ISOChronology.getInstance(PARIS));
+        DateTime end = new DateTime(2010, 7, 1, 12, 30, ISOChronology.getInstance(PARIS));
+        assertEquals(new Interval(start, end), Interval.parse("2010-06-30T12:30+04:00/2010-07-01T14:30+04:00"));
+        assertEquals(new Interval(start, end), Interval.parse("2010-06-30T12:30+04:00/P1DT2H"));
+        assertEquals(new Interval(start, end), Interval.parse("P1DT2H/2010-07-01T14:30+04:00"));
+    }
+
+    public void testParseWithOffset_noOffsetInString() throws Throwable {
+        DateTime start = new DateTime(2010, 6, 30, 12, 30, ISOChronology.getInstance(PARIS));
+        DateTime end = new DateTime(2010, 7, 1, 14, 30, ISOChronology.getInstance(PARIS));
+        assertEquals(new Interval(start, end), Interval.parseWithOffset("2010-06-30T12:30/2010-07-01T14:30"));
+        assertEquals(new Interval(start, end), Interval.parseWithOffset("2010-06-30T12:30/P1DT2H"));
+        assertEquals(new Interval(start, end), Interval.parseWithOffset("P1DT2H/2010-07-01T14:30"));
+    }
+
+    public void testParseWithOffset_offsetInString() throws Throwable {
+        DateTime start = new DateTime(2010, 6, 30, 12, 30, ISOChronology.getInstance(OFFSET_04_00));
+        DateTime end = new DateTime(2010, 7, 1, 14, 30, ISOChronology.getInstance(OFFSET_04_00));
+        assertEquals(new Interval(start, end), Interval.parseWithOffset("2010-06-30T12:30+04:00/2010-07-01T14:30+04:00"));
+        assertEquals(new Interval(start, end), Interval.parseWithOffset("2010-06-30T12:30+04:00/p1DT2H"));
+        assertEquals(new Interval(start, end), Interval.parseWithOffset("p1DT2H/2010-07-01T14:30+04:00"));
+    }
+
+    public void testParseWithOffset_invalid() throws Throwable {
+        try {
+            Interval.parseWithOffset("2010-06-30T12:30");
+            fail();
+        } catch (IllegalArgumentException ex) {
+            // expected
+        }
+        try {
+            Interval.parseWithOffset("P1D/P1D");
+            fail();
+        } catch (IllegalArgumentException ex) {
+            // expected
+        }
     }
 
     //-----------------------------------------------------------------------
@@ -135,6 +175,56 @@ public class TestInterval_Constructors extends TestCase {
             new Interval(dt1.getMillis(), dt2.getMillis());
             fail();
         } catch (IllegalArgumentException ex) {}
+    }
+
+    public void testConstructor_long_long_minMax() throws Throwable {
+        Interval test = new Interval(Long.MIN_VALUE, Long.MAX_VALUE);
+        assertEquals(Long.MIN_VALUE, test.getStartMillis());
+        assertEquals(Long.MAX_VALUE, test.getEndMillis());
+        assertEquals(new DateTime(Long.MIN_VALUE), test.getStart());
+        assertEquals(new DateTime(Long.MAX_VALUE), test.getEnd());
+        assertEquals(ISOChronology.getInstance(), test.getChronology());
+        assertEquals(test, test.toInterval());
+        assertEquals("-292275055-05-16T16:56:25.192+00:09:21/292278994-08-17T07:12:55.807Z", test.toString());
+        try {
+            test.toDuration();
+            fail();
+        } catch (ArithmeticException ex) {}
+        try {
+            test.toDurationMillis();
+            fail();
+        } catch (ArithmeticException ex) {}
+        try {
+            test.toPeriod();
+            fail();
+        } catch (RuntimeException ex) {}
+    }
+
+    public void testConstructor_long_long_min() throws Throwable {
+        Interval test = new Interval(Long.MIN_VALUE, Long.MIN_VALUE + 9);
+        assertEquals(Long.MIN_VALUE, test.getStartMillis());
+        assertEquals(Long.MIN_VALUE + 9, test.getEndMillis());
+        assertEquals(new DateTime(Long.MIN_VALUE), test.getStart());
+        assertEquals(new DateTime(Long.MIN_VALUE + 9), test.getEnd());
+        assertEquals(ISOChronology.getInstance(), test.getChronology());
+        assertEquals(test, test.toInterval());
+        assertEquals("-292275055-05-16T16:56:25.192+00:09:21/-292275055-05-16T16:56:25.201+00:09:21", test.toString());
+        assertEquals(9, test.toDurationMillis());
+        assertEquals(new Duration(9), test.toDuration());
+        assertEquals(new Period(9), test.toPeriod());
+    }
+
+    public void testConstructor_long_long_max() throws Throwable {
+        Interval test = new Interval(Long.MAX_VALUE - 9, Long.MAX_VALUE);
+        assertEquals(Long.MAX_VALUE - 9, test.getStartMillis());
+        assertEquals(Long.MAX_VALUE, test.getEndMillis());
+        assertEquals(new DateTime(Long.MAX_VALUE - 9), test.getStart());
+        assertEquals(new DateTime(Long.MAX_VALUE), test.getEnd());
+        assertEquals(ISOChronology.getInstance(), test.getChronology());
+        assertEquals(test, test.toInterval());
+        assertEquals("292278994-08-17T07:12:55.798Z/292278994-08-17T07:12:55.807Z", test.toString());
+        assertEquals(9, test.toDurationMillis());
+        assertEquals(new Duration(9), test.toDuration());
     }
 
     //-----------------------------------------------------------------------

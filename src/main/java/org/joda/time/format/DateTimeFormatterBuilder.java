@@ -17,10 +17,10 @@ package org.joda.time.format;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.joda.time.Chronology;
@@ -1304,25 +1304,21 @@ public class DateTimeFormatterBuilder {
             int limit = Math.min(iMaxParsedDigits, text.length() - position);
 
             boolean negative = false;
+            boolean positive = false;
             int length = 0;
             while (length < limit) {
                 char c = text.charAt(position + length);
                 if (length == 0 && (c == '-' || c == '+') && iSigned) {
                     negative = c == '-';
+                    positive = c == '+';
 
                     // Next character must be a digit.
                     if (length + 1 >= limit || 
-                        (c = text.charAt(position + length + 1)) < '0' || c > '9')
-                    {
+                        (c = text.charAt(position + length + 1)) < '0' || c > '9') {
                         break;
                     }
+                    length++;
 
-                    if (negative) {
-                        length++;
-                    } else {
-                        // Skip the '+' for parseInt to succeed.
-                        position++;
-                    }
                     // Expand the limit to disregard the sign character.
                     limit = Math.min(limit + 1, text.length() - position);
                     continue;
@@ -1341,10 +1337,15 @@ public class DateTimeFormatterBuilder {
             if (length >= 9) {
                 // Since value may exceed integer limits, use stock parser
                 // which checks for this.
-                value = Integer.parseInt(text.subSequence(position, position += length).toString());
+                if (positive) {
+                    value = Integer.parseInt(text.subSequence(position + 1, position += length).toString());
+                } else {
+                    value = Integer.parseInt(text.subSequence(position, position += length).toString());
+                }
+//                value = Integer.parseInt(text.subSequence(position, position += length).toString());
             } else {
                 int i = position;
-                if (negative) {
+                if (negative || positive) {
                     i++;
                 }
                 try {
@@ -2313,7 +2314,11 @@ public class DateTimeFormatterBuilder {
             implements InternalPrinter, InternalParser {
 
         INSTANCE;
-        static final Set<String> ALL_IDS = DateTimeZone.getAvailableIDs();
+        private static final List<String> ALL_IDS;
+        static {
+            ALL_IDS = new ArrayList<String>(DateTimeZone.getAvailableIDs());
+            Collections.sort(ALL_IDS);
+        }
         static final int MAX_LENGTH;
         static {
             int max = 0;
@@ -2343,11 +2348,15 @@ public class DateTimeFormatterBuilder {
 
         public int parseInto(DateTimeParserBucket bucket, CharSequence text, int position) {
             String best = null;
-            for (String id : ALL_IDS) {
+            int pos = prefixedStartPosition(text, position);
+            for (int i = pos; i < ALL_IDS.size(); i++) {
+                String id = ALL_IDS.get(i);
                 if (csStartsWith(text, position, id)) {
                     if (best == null || id.length() > best.length()) {
                         best = id;
                     }
+                } else {
+                    break;
                 }
             }
             if (best != null) {
@@ -2355,6 +2364,25 @@ public class DateTimeFormatterBuilder {
                 return position + best.length();
             }
             return ~position;
+        }
+
+        private static int prefixedStartPosition(CharSequence text, int position) {
+            int lo = 0;
+            int hi = ALL_IDS.size() - 1;
+
+            while (lo <= hi) {
+                int mid = (lo + hi) >>> 1;
+                String value = ALL_IDS.get(mid);
+                int compare = csCompare(text, position, value);
+                if (compare > 0) {
+                    hi = mid - 1;
+                } else if (compare < 0) {
+                    lo = mid + 1;
+                } else {
+                    return mid;
+                }
+            }
+            return lo;
         }
     }
 
@@ -2587,6 +2615,19 @@ public class DateTimeFormatterBuilder {
 
             return ~bestInvalidPos;
         }
+    }
+
+    static int csCompare(CharSequence text, int position, String search) {
+        int matchLen = text.length() - position;
+        int searchLen = search.length();
+        int compareLen = Math.min(matchLen, searchLen);
+        for (int i = 0; i < compareLen; i++) {
+            int result = search.charAt(i) - text.charAt(position + i);
+            if (result != 0) {
+                return result;
+            }
+        }
+        return searchLen - matchLen;
     }
 
     static boolean csStartsWith(CharSequence text, int position, String search) {

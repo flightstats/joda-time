@@ -140,6 +140,11 @@ public class TestInterval_Basics extends TestCase {
         assertSame(Duration.ZERO, test.toDuration());
     }
 
+    public void testGetDuration3() {
+        Interval test = new Interval(Long.MIN_VALUE, -2);
+        assertEquals(-2L - Long.MIN_VALUE, test.toDurationMillis());
+    }
+
     public void testEqualsHashCode() {
         Interval test1 = new Interval(TEST_TIME1, TEST_TIME2);
         Interval test2 = new Interval(TEST_TIME1, TEST_TIME2);
@@ -1027,8 +1032,8 @@ public class TestInterval_Basics extends TestCase {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         ObjectOutputStream oos = new ObjectOutputStream(baos);
         oos.writeObject(test);
-        byte[] bytes = baos.toByteArray();
         oos.close();
+        byte[] bytes = baos.toByteArray();
         
         ByteArrayInputStream bais = new ByteArrayInputStream(bytes);
         ObjectInputStream ois = new ObjectInputStream(bais);
