@@ -9,7 +9,7 @@
   <artifactId>joda-time</artifactId>
   <packaging>jar</packaging>
   <name>Joda-Time</name>
-  <version>2.9.4-2016j</version>
+  <version>2.9.7-2016j</version>
   <description>Date and time library to replace JDK date handling</description>
   <url>http://www.joda.org/joda-time/</url>
 
@@ -53,6 +53,10 @@
     <contributor>
       <name>Adrian Acala</name>
       <url>https://github.com/AdrianAcala</url>
+    </contributor>
+    <contributor>
+      <name>Afif Ahmed</name>
+      <url>https://github.com/a7i7</url>
     </contributor>
     <contributor>
       <name>Guy Allard</name>
@@ -125,6 +129,10 @@
       <url>https://github.com/haguenau</url>
     </contributor>
     <contributor>
+      <name>Kaj Hejer</name>
+      <url>https://github.com/kajh</url>
+    </contributor>
+    <contributor>
       <name>Rowan Hill</name>
       <url>https://github.com/rowanhill</url>
     </contributor>
@@ -189,6 +197,14 @@
     </contributor>
     <contributor>
       <name>Blair Martin</name>
+    </contributor>
+    <contributor>
+      <name>Paul Martin</name>
+      <url>https://github.com/pgpx</url>
+    </contributor>
+    <contributor>
+      <name>Katy P</name>
+      <url>https://github.com/katyp</url>
     </contributor>
     <contributor>
       <name>Amling Palantir</name>
@@ -299,7 +315,7 @@
     <!-- define build -->
     <plugins>
       <plugin>
-        <groupId>org.codehaus.mojo</groupId>      
+        <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>
         <version>1.4.0</version>
         <executions>
@@ -430,6 +446,20 @@
             <goals>
               <goal>jar-no-fork</goal>
             </goals>
+          </execution>
+          <execution>
+            <id>attach-no-tztb-sources</id>
+            <phase>package</phase>
+            <goals>
+              <goal>jar-no-fork</goal>
+            </goals>
+            <configuration>
+              <classifier>no-tzdb-sources</classifier>
+              <excludes>
+                <exclude>org/joda/time/tz/data/**</exclude>
+                <exclude>org/joda/time/tz/ZoneInfoCompiler*</exclude>
+              </excludes>
+            </configuration>
           </execution>
         </executions>
         <!-- work around maven bug where properties files added twice -->
@@ -626,6 +656,11 @@
           <artifactId>maven-toolchains-plugin</artifactId>
           <version>${maven-toolchains-plugin.version}</version>
         </plugin>
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>build-helper-maven-plugin</artifactId>
+          <version>${build-helper-maven-plugin.version}</version>
+        </plugin>
         <!--This plugin's configuration is used to store Eclipse m2e settings only. It has no influence on the Maven build itself.-->
         <plugin>
           <groupId>org.eclipse.m2e</groupId>
@@ -719,6 +754,18 @@
           <showSuccess>true</showSuccess>
         </configuration>
       </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-changes-plugin</artifactId>
+        <version>${maven-changes-plugin.version}</version>
+        <reportSets>
+          <reportSet>
+            <reports>
+              <report>changes-report</report>
+            </reports>
+          </reportSet>
+        </reportSets>
+      </plugin>
     </plugins>
   </reporting>
 
@@ -800,11 +847,47 @@
         <additionalparam></additionalparam>
       </properties>
     </profile>
+    <profile>
+      <id>attach-additional-javadoc</id>
+      <activation>
+        <property>
+          <name>maven.javadoc.skip</name>
+          <value>!true</value>
+        </property>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>build-helper-maven-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>attach-no-tzdb-javadoc</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>attach-artifact</goal>
+                </goals>
+                <configuration>
+                  <artifacts>
+                    <artifact>
+                      <file>${project.build.directory}/${project.artifactId}-${project.version}-javadoc.jar</file>
+                      <type>jar</type>
+                      <classifier>no-tzdb-javadoc</classifier>
+                    </artifact>
+                  </artifacts>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
   </profiles>
 
   <!-- ==================================================================== -->
   <properties>
     <!-- Plugin version numbers -->
+    <build-helper-maven-plugin.version>1.12</build-helper-maven-plugin.version>
     <maven-assembly-plugin.version>2.5.5</maven-assembly-plugin.version>
     <maven-changes-plugin.version>2.11</maven-changes-plugin.version>
     <maven-checkstyle-plugin.version>2.16</maven-checkstyle-plugin.version>

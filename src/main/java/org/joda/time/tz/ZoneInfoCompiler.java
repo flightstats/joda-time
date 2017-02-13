@@ -192,7 +192,7 @@ public class ZoneInfoCompiler {
     }
 
     static int parseYear(String str, int def) {
-        str = str.toLowerCase();
+        str = str.toLowerCase(Locale.ENGLISH);
         if (str.equals("minimum") || str.equals("min")) {
             return Integer.MIN_VALUE;
         } else if (str.equals("maximum") || str.equals("max")) {
@@ -263,6 +263,7 @@ public class ZoneInfoCompiler {
         long end = ISOChronology.getInstanceUTC().year().set(0, 2050);
 
         int offset = tz.getOffset(millis);
+        int stdOffset = tz.getStandardOffset(millis);
         String key = tz.getNameKey(millis);
 
         List<Long> transitions = new ArrayList<Long>();
@@ -276,10 +277,10 @@ public class ZoneInfoCompiler {
             millis = next;
 
             int nextOffset = tz.getOffset(millis);
+            int nextStdOffset = tz.getStandardOffset(millis);
             String nextKey = tz.getNameKey(millis);
 
-            if (offset == nextOffset
-                && key.equals(nextKey)) {
+            if (offset == nextOffset && stdOffset == nextStdOffset && key.equals(nextKey)) {
                 System.out.println("*d* Error in " + tz.getID() + " "
                                    + new DateTime(millis,
                                                   ISOChronology.getInstanceUTC()));
@@ -357,9 +358,15 @@ public class ZoneInfoCompiler {
     public Map<String, DateTimeZone> compile(File outputDir, File[] sources) throws IOException {
         if (sources != null) {
             for (int i=0; i<sources.length; i++) {
-                BufferedReader in = new BufferedReader(new FileReader(sources[i]));
-                parseDataFile(in, "backward".equals(sources[i].getName()));
-                in.close();
+                BufferedReader in = null;
+                try {
+                    in = new BufferedReader(new FileReader(sources[i]));
+                    parseDataFile(in, "backward".equals(sources[i].getName()));
+                } finally {
+                    if (in != null) {
+                        in.close();
+                    }
+                }
             }
         }
 

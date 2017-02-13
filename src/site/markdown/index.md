@@ -31,7 +31,7 @@ Various documentation is available:
 * The [key concepts](key.html) and [chronology](cal.html) guides
 * The [Javadoc](apidocs/index.html)
 * The list of [FAQ](faq.html)s.
-* The [change notes](installation.html) for each release
+* The [change notes](changes-report.html) for each release
 * The [GitHub](https://github.com/JodaOrg/joda-time) source repository
 
 
@@ -127,21 +127,21 @@ Joda-Time is licenced under the business friendly <a href="license.html">Apache 
 
 ## <i></i> Releases
 
-[Release 2.9.4](download.html) is the current latest release.
+[Release 2.9.7](download.html) is the current latest release.
 This release is considered stable and worthy of the 2.x tag.
-See the [upgrade notes](installation.html) for full details.
+See the [change notes](changes-report.html) for full details.
 
 Joda-Time requires Java SE 5 or later and has [no dependencies](dependencies.html).
 There is a *compile-time* dependency on [Joda-Convert](http://www.joda.org/joda-convert/),
 but this is not required at runtime thanks to the magic of annotations.
 
-Available in [Maven Central](http://search.maven.org/#artifactdetails%7Cjoda-time%7Cjoda-time%7C2.9.4%7Cjar).
+Available in [Maven Central](http://search.maven.org/#artifactdetails%7Cjoda-time%7Cjoda-time%7C2.9.7%7Cjar).
 
 ```xml
 <dependency>
   <groupId>joda-time</groupId>
   <artifactId>joda-time</artifactId>
-  <version>2.9.4</version>
+  <version>2.9.7</version>
 </dependency>
 ```
 
